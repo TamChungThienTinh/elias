@@ -11,26 +11,37 @@ import {
   Crown,
   Download,
   Heart,
+  KeyRound,
   List,
+  Lock,
+  LogIn,
   MessageSquare,
   Minus,
   Moon,
   Plus,
+  QrCode,
   ScrollText,
   Sun,
 } from 'lucide-react';
 import {ARCS, CHAPTERS} from '../data/chapters';
+import {isSupabaseConfigured} from '../lib/supabase';
+import {fetchChapterAccessContent} from '../services/vipService';
 import type {
+  AuthUser,
   Chapter,
   ChapterComment,
   ReaderFontFamily,
   ReaderSettings,
   ReaderTheme,
   ReadingProgress,
+  VipRedeemResult,
 } from '../types';
 import {
+  calculateReadingProgressPercent,
   calculateReadingTimeMinutes,
   formatCount,
+  getPublicUnlockCountdownText,
+  isChapterVipCurrentlyLocked,
   paginateParagraphs,
   validateCommentInput,
 } from '../utils/readerLogic';
@@ -40,9 +51,11 @@ interface ReaderViewProps {
   chapter: Chapter;
   settings: ReaderSettings;
   progress: ReadingProgress | null;
+  authUser: AuthUser | null;
   isFavorite: boolean;
   isOfflineSaved: boolean;
   isVip: boolean;
+  focusVipInputSignal: number;
   defaultAuthorName: string;
   comments: ChapterComment[];
   likedCommentIds: string[];
@@ -52,7 +65,9 @@ interface ReaderViewProps {
   onBackToCatalog: () => void;
   onToggleFavorite: (chapterId: string) => void;
   onToggleOffline: (chapterId: string) => void;
-  onOpenVipModal: () => void;
+  onOpenAuthModal: (reason?: string) => void;
+  onOpenVipGuideModal: () => void;
+  onRedeemVipCode: (code: string) => Promise<VipRedeemResult>;
   onAddComment: (chapterId: string, author: string, content: string) => void;
   onToggleLikeComment: (commentId: string) => void;
 }
@@ -70,19 +85,34 @@ const THEME_STYLES: Record<
     buttonIdle: string;
     inputBg: string;
     accentText: string;
+    fadeGradient: string;
   }
 > = {
   dark: {
-    pageBg: 'bg-[#0D0F14]',
-    surfaceBg: 'bg-[#141720]',
-    toolbarBg: 'bg-[#0D0F14]/95',
+    pageBg: 'bg-[#090B0F]',
+    surfaceBg: 'bg-[#11141C]',
+    toolbarBg: 'bg-[#090B0F]/95',
     textPrimary: 'text-[#EFECE6]',
-    textProse: 'text-[#D6D3CB]',
+    textProse: 'text-[#D8D5CD]',
     textMuted: 'text-[#96948E]',
     border: 'border-white/[0.09]',
     buttonIdle: 'text-[#C9C5BC] hover:bg-white/[0.06]',
     inputBg: 'bg-[#0B0D12] text-[#EFECE6] placeholder:text-[#6E6D68]',
     accentText: 'text-[#C69B53]',
+    fadeGradient: 'from-transparent via-[#090B0F]/82 to-[#090B0F]',
+  },
+  'soft-dark': {
+    pageBg: 'bg-[#1A1D24]',
+    surfaceBg: 'bg-[#222630]',
+    toolbarBg: 'bg-[#1A1D24]/95',
+    textPrimary: 'text-[#E5E3DD]',
+    textProse: 'text-[#CFCDC6]',
+    textMuted: 'text-[#A09E97]',
+    border: 'border-white/[0.1]',
+    buttonIdle: 'text-[#D0CEC7] hover:bg-white/[0.07]',
+    inputBg: 'bg-[#14171D] text-[#E5E3DD] placeholder:text-[#84827B]',
+    accentText: 'text-[#D6AD66]',
+    fadeGradient: 'from-transparent via-[#1A1D24]/82 to-[#1A1D24]',
   },
   light: {
     pageBg: 'bg-[#F8F7F4]',
@@ -95,6 +125,7 @@ const THEME_STYLES: Record<
     buttonIdle: 'text-[#3D424D] hover:bg-black/[0.05]',
     inputBg: 'bg-[#FFFFFF] text-[#1A1D24] placeholder:text-[#7E828C]',
     accentText: 'text-[#8C6220]',
+    fadeGradient: 'from-transparent via-[#F8F7F4]/85 to-[#F8F7F4]',
   },
   sepia: {
     pageBg: 'bg-[#F3ECD8]',
@@ -107,6 +138,7 @@ const THEME_STYLES: Record<
     buttonIdle: 'text-[#4A3B28] hover:bg-[#4A3B28]/[0.07]',
     inputBg: 'bg-[#F7F1E1] text-[#2D241B] placeholder:text-[#84725E]',
     accentText: 'text-[#855B1B]',
+    fadeGradient: 'from-transparent via-[#F3ECD8]/85 to-[#F3ECD8]',
   },
 };
 
@@ -121,9 +153,11 @@ export function ReaderView({
   chapter,
   settings,
   progress,
+  authUser,
   isFavorite,
   isOfflineSaved,
   isVip,
+  focusVipInputSignal,
   defaultAuthorName,
   comments,
   likedCommentIds,
@@ -133,7 +167,9 @@ export function ReaderView({
   onBackToCatalog,
   onToggleFavorite,
   onToggleOffline,
-  onOpenVipModal,
+  onOpenAuthModal,
+  onOpenVipGuideModal,
+  onRedeemVipCode,
   onAddComment,
   onToggleLikeComment,
 }: ReaderViewProps) {
@@ -146,10 +182,45 @@ export function ReaderView({
       ? CHAPTERS[currentIndex + 1]
       : null;
 
-  const isLockedVip = Boolean(chapter.isVipEarlyAccess && !isVip);
-  const visibleParagraphs = isLockedVip
-    ? chapter.paragraphs.slice(0, 2)
-    : chapter.paragraphs;
+  const defaultLocked = isChapterVipCurrentlyLocked(chapter, isVip);
+  const defaultPreviewCount = Math.max(
+    1,
+    chapter.previewParagraphCount ??
+      Math.max(1, Math.ceil(chapter.paragraphs.length * 0.2))
+  );
+
+  const [chapterParagraphs, setChapterParagraphs] = useState<string[]>(() =>
+    defaultLocked
+      ? chapter.paragraphs.slice(0, defaultPreviewCount)
+      : chapter.paragraphs
+  );
+  const [hasFullAccess, setHasFullAccess] = useState<boolean>(!defaultLocked);
+  const [chapterPublicDate, setChapterPublicDate] = useState<string | undefined>(
+    chapter.publicDate
+  );
+  const [loadingContent, setLoadingContent] = useState(false);
+
+  // Tự động tải nội dung bảo mật qua RPC `get_chapter_content` khi đổi chương hoặc vừa kích hoạt VIP
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingContent(true);
+    fetchChapterAccessContent(chapter, isVip)
+      .then((res) => {
+        if (cancelled) return;
+        setChapterParagraphs(res.paragraphs);
+        setHasFullAccess(res.hasFullAccess);
+        setChapterPublicDate(res.publicDate ?? chapter.publicDate);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingContent(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chapter, isVip, authUser?.id]);
+
+  const isLockedVip = !hasFullAccess;
+  const visibleParagraphs = chapterParagraphs;
 
   const charsPerPage = Math.max(460, Math.round(920 - (settings.fontSize - 16) * 32));
   const pages = useMemo(
@@ -168,10 +239,54 @@ export function ReaderView({
     progress && progress.chapterId === chapter.id ? progress.scrollPercent : 0
   );
 
+  const [vipCodeInput, setVipCodeInput] = useState('');
+  const [vipCodeError, setVipCodeError] = useState<string | null>(null);
+  const [vipRedeeming, setVipRedeeming] = useState(false);
+
   const [commentAuthor, setCommentAuthor] = useState(defaultAuthorName);
   const [commentText, setCommentText] = useState('');
   const [commentError, setCommentError] = useState<string | null>(null);
   const restoredChapterRef = useRef<string | null>(null);
+  const proseSectionRef = useRef<HTMLDivElement | null>(null);
+  const paywallCardRef = useRef<HTMLDivElement | null>(null);
+  const vipCodeInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setCommentAuthor(defaultAuthorName);
+  }, [defaultAuthorName]);
+
+  useEffect(() => {
+    if (focusVipInputSignal <= 0 || !isLockedVip) return;
+    paywallCardRef.current?.scrollIntoView({behavior: 'smooth', block: 'center'});
+    window.setTimeout(() => {
+      vipCodeInputRef.current?.focus();
+    }, 220);
+  }, [focusVipInputSignal, isLockedVip]);
+
+  const handleRedeemSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVipCodeError(null);
+    const trimmed = vipCodeInput.trim();
+    if (!trimmed) {
+      setVipCodeError('Vui lòng nhập mã kích hoạt VIP.');
+      return;
+    }
+    setVipRedeeming(true);
+    try {
+      const res = await onRedeemVipCode(trimmed);
+      if (!res.success) {
+        setVipCodeError(res.message);
+      } else {
+        setVipCodeInput('');
+        // Tải lại full_content ngay lập tức không cần reload trang
+        const refreshed = await fetchChapterAccessContent(chapter, true);
+        setChapterParagraphs(refreshed.paragraphs);
+        setHasFullAccess(refreshed.hasFullAccess);
+      }
+    } finally {
+      setVipRedeeming(false);
+    }
+  };
 
   // Đồng bộ khi chuyển chương
   useEffect(() => {
@@ -209,29 +324,57 @@ export function ReaderView({
     }
   }, [pages.length, pageIndex]);
 
-  // Tự động lưu vị trí cuộn dọc
+  // Tự động cập nhật và lưu phần trăm tiến độ đọc chương khi cuộn dọc
   useEffect(() => {
     if (settings.readingMode !== 'scroll') return;
     let timer: number | undefined;
-    const onScroll = () => {
+
+    const computeCurrentScrollPct = () => {
+      const proseEl = proseSectionRef.current;
+      if (proseEl) {
+        const rect = proseEl.getBoundingClientRect();
+        const proseTop = window.scrollY + rect.top;
+        const proseHeight = proseEl.offsetHeight;
+        // Khoảng cuộn từ đầu bài tới khi cuối đoạn văn cuối chạm vùng đọc dưới màn hình
+        const startY = Math.max(0, proseTop - 160);
+        const endY = Math.max(startY + 1, proseTop + proseHeight - window.innerHeight * 0.72);
+        return calculateReadingProgressPercent({
+          mode: 'scroll',
+          scrollOffset: Math.max(0, window.scrollY - startY),
+          scrollableDistance: endY - startY,
+          pageIndex,
+          totalPages: pages.length,
+        });
+      }
       const maxScroll =
         document.documentElement.scrollHeight - window.innerHeight;
-      const pct =
-        maxScroll > 0
-          ? Math.min(100, Math.max(0, Math.round((window.scrollY / maxScroll) * 100)))
-          : 100;
+      return calculateReadingProgressPercent({
+        mode: 'scroll',
+        scrollOffset: window.scrollY,
+        scrollableDistance: maxScroll,
+        pageIndex,
+        totalPages: pages.length,
+      });
+    };
+
+    const onScroll = () => {
+      const pct = computeCurrentScrollPct();
       setScrollPercent(pct);
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         onSaveProgress(chapter.id, pct, pageIndex);
       }, 250);
     };
+
+    setScrollPercent(computeCurrentScrollPct());
     window.addEventListener('scroll', onScroll, {passive: true});
+    window.addEventListener('resize', onScroll, {passive: true});
     return () => {
       window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
       window.clearTimeout(timer);
     };
-  }, [chapter.id, settings.readingMode, pageIndex, onSaveProgress]);
+  }, [chapter.id, settings.readingMode, settings.fontSize, pageIndex, pages.length, onSaveProgress]);
 
   // Hỗ trợ phím mũi tên trái/phải khi ở chế độ lật trang
   useEffect(() => {
@@ -273,22 +416,51 @@ export function ReaderView({
 
   const chapterComments = comments.filter((c) => c.chapterId === chapter.id);
   const readingMinutes = calculateReadingTimeMinutes(chapter.paragraphs);
-  const displayProgress =
-    settings.readingMode === 'paged'
-      ? Math.round(((pageIndex + 1) / Math.max(1, pages.length)) * 100)
-      : scrollPercent;
+  const displayProgress = calculateReadingProgressPercent({
+    mode: settings.readingMode,
+    scrollOffset: scrollPercent,
+    scrollableDistance: 100,
+    pageIndex,
+    totalPages: pages.length,
+  });
 
   return (
     <div
       data-reader-theme={settings.theme}
       className={`min-h-[calc(100vh-4rem)] transition-colors duration-200 ${palette.pageBg} ${palette.textPrimary}`}
     >
-      {/* Thin reading depth progress indicator */}
-      <div className="fixed top-16 left-0 right-0 z-30 h-[2px] bg-transparent pointer-events-none">
+      {/* Thanh tiến trình đọc màu vàng đồng mỏng gắn ngay dưới Header */}
+      <div
+        data-testid="reader-progress-bar"
+        className={`sticky top-16 z-30 ${palette.toolbarBg} backdrop-blur-md border-b ${palette.border} transition-colors`}
+      >
         <div
-          className="h-full bg-[#C69B53] transition-all duration-150"
-          style={{width: `${Math.max(4, displayProgress)}%`}}
-        />
+          role="progressbar"
+          aria-label="Tiến độ đọc chương truyện"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={displayProgress}
+          className="w-full h-[3px] bg-[#C69B53]/18 overflow-hidden"
+        >
+          <div
+            data-testid="reader-progress-fill"
+            className="h-full w-full origin-left bg-gradient-to-r from-[#9E7634] via-[#C69B53] to-[#E2BA74] transition-transform duration-150 ease-out"
+            style={{transform: `scaleX(${displayProgress / 100})`}}
+          />
+        </div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-6 flex items-center justify-between gap-4 text-[11px]">
+          <span className={`truncate ${palette.textMuted}`}>
+            Chương {chapter.number}: {chapter.title}
+          </span>
+          <span
+            data-testid="reader-progress-percent"
+            className={`font-medium tabular-nums whitespace-nowrap shrink-0 ${palette.accentText}`}
+          >
+            {settings.readingMode === 'paged'
+              ? `Trang ${pageIndex + 1}/${pages.length} · ${displayProgress}%`
+              : `Đã đọc ${displayProgress}%`}
+          </span>
+        </div>
       </div>
 
       {/* Reader Customization Toolbar */}
@@ -314,9 +486,10 @@ export function ReaderView({
             >
               {(
                 [
-                  {id: 'dark', label: 'Tối', icon: Moon},
+                  {id: 'dark', label: 'Đen tuyền', icon: Moon},
+                  {id: 'soft-dark', label: 'Xám dịu', icon: Moon},
                   {id: 'light', label: 'Sáng', icon: Sun},
-                  {id: 'sepia', label: 'Giấy vàng', icon: ScrollText},
+                  {id: 'sepia', label: 'Giấy cũ', icon: ScrollText},
                 ] as const
               ).map((item) => {
                 const Icon = item.icon;
@@ -327,7 +500,7 @@ export function ReaderView({
                     type="button"
                     aria-pressed={active}
                     onClick={() => onUpdateSettings({theme: item.id})}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                       active
                         ? 'bg-[#C69B53] text-[#0B0D12]'
                         : palette.buttonIdle
@@ -341,8 +514,8 @@ export function ReaderView({
             </div>
           </div>
 
-          {/* Right: Typography, Font Size, Paged Mode, Bookmark & Offline */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Right: Typography, Font Size, Line Height, Paged Mode, Bookmark & Offline */}
+          <div className="flex flex-wrap items-center gap-1.5">
             {/* Font selector */}
             <label htmlFor="reader-font-select" className="sr-only">
               Chọn phông chữ
@@ -355,12 +528,31 @@ export function ReaderView({
                   fontFamily: e.target.value as ReaderFontFamily,
                 })
               }
-              className={`px-2.5 py-1.5 rounded-md border ${palette.border} ${palette.inputBg} text-xs font-medium focus:outline-none focus:border-[#C69B53]`}
+              className={`px-2 py-1.5 rounded-md border ${palette.border} ${palette.inputBg} text-xs font-medium focus:outline-none focus:border-[#C69B53]`}
             >
               <option value="lora">Lora (Sách)</option>
               <option value="sans">Jakarta Sans</option>
               <option value="playfair">Playfair Serif</option>
               <option value="system">Serif hệ thống</option>
+            </select>
+
+            {/* Line-height selector */}
+            <label htmlFor="reader-lineheight-select" className="sr-only">
+              Giãn dòng
+            </label>
+            <select
+              id="reader-lineheight-select"
+              value={String(settings.lineHeight)}
+              onChange={(e) =>
+                onUpdateSettings({
+                  lineHeight: Number(e.target.value),
+                })
+              }
+              className={`px-2 py-1.5 rounded-md border ${palette.border} ${palette.inputBg} text-xs font-medium tabular-nums focus:outline-none focus:border-[#C69B53]`}
+            >
+              <option value="1.6">Dòng 1.6</option>
+              <option value="1.85">Dòng 1.85</option>
+              <option value="2.1">Dòng 2.1</option>
             </select>
 
             {/* Font size stepper */}
@@ -522,105 +714,221 @@ export function ReaderView({
             </figure>
           )}
 
-        {/* Reading Body: Scroll Mode vs Smooth Page-Flip Mode */}
-        {settings.readingMode === 'scroll' ? (
-          <div
-            data-testid="reader-prose-scroll"
-            className={`mt-8 space-y-6 ${FONT_CLASS_MAP[settings.fontFamily]} ${palette.textProse}`}
-            style={{
-              fontSize: `${settings.fontSize}px`,
-              lineHeight: settings.lineHeight,
-            }}
-          >
-            {visibleParagraphs.map((para, idx) => (
-              <p
-                key={idx}
-                className={
-                  idx === 0
-                    ? 'first-letter:text-5xl first-letter:font-display first-letter:font-semibold first-letter:float-left first-letter:mr-3 first-letter:leading-[0.9] first-letter:text-[#C69B53]'
-                    : ''
-                }
-              >
-                {para}
-              </p>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-8 space-y-6">
+        {/* Reading Body: Scroll Mode vs Smooth Page-Flip Mode (with CSS fade-out if locked VIP) */}
+        <div className="relative">
+          {settings.readingMode === 'scroll' || isLockedVip ? (
             <div
-              data-testid="reader-prose-paged"
-              className={`min-h-[380px] p-6 sm:p-8 rounded-xl border ${palette.border} ${palette.surfaceBg} overflow-hidden`}
+              ref={proseSectionRef}
+              data-testid="reader-prose-scroll"
+              className={`mt-8 space-y-6 ${FONT_CLASS_MAP[settings.fontFamily]} ${palette.textProse} ${
+                isLockedVip ? 'select-none pb-8' : ''
+              }`}
+              style={{
+                fontSize: `${settings.fontSize}px`,
+                lineHeight: settings.lineHeight,
+              }}
             >
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={`${chapter.id}-page-${pageIndex}`}
-                  initial={{opacity: 0, x: pageDirection * 24}}
-                  animate={{opacity: 1, x: 0}}
-                  exit={{opacity: 0, x: pageDirection * -24}}
-                  transition={{duration: 0.2, ease: [0.16, 1, 0.3, 1]}}
-                  className={`space-y-5 ${FONT_CLASS_MAP[settings.fontFamily]} ${palette.textProse}`}
-                  style={{
-                    fontSize: `${settings.fontSize}px`,
-                    lineHeight: settings.lineHeight,
-                  }}
+              {visibleParagraphs.map((para, idx) => (
+                <p
+                  key={idx}
+                  className={
+                    idx === 0
+                      ? 'first-letter:text-5xl first-letter:font-display first-letter:font-semibold first-letter:float-left first-letter:mr-3 first-letter:leading-[0.9] first-letter:text-[#C69B53]'
+                      : ''
+                  }
                 >
-                  {(pages[pageIndex] || []).map((para, idx) => (
-                    <p key={idx}>{para}</p>
-                  ))}
-                </motion.div>
-              </AnimatePresence>
+                  {para}
+                </p>
+              ))}
             </div>
-
-            {/* Page-flip controls */}
-            <div className="flex items-center justify-between gap-4">
-              <button
-                type="button"
-                onClick={() => handleTurnPage(-1)}
-                disabled={pageIndex === 0}
-                className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-md border ${palette.border} text-xs font-medium transition-colors whitespace-nowrap cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${palette.buttonIdle}`}
+          ) : (
+            <div className="mt-8 space-y-6">
+              <div
+                data-testid="reader-prose-paged"
+                className={`min-h-[380px] p-6 sm:p-8 rounded-xl border ${palette.border} ${palette.surfaceBg} overflow-hidden`}
               >
-                <ChevronLeft className="w-4 h-4" aria-hidden="true" />
-                Trang trước
-              </button>
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={`${chapter.id}-page-${pageIndex}`}
+                    initial={{opacity: 0, x: pageDirection * 24}}
+                    animate={{opacity: 1, x: 0}}
+                    exit={{opacity: 0, x: pageDirection * -24}}
+                    transition={{duration: 0.2, ease: [0.16, 1, 0.3, 1]}}
+                    className={`space-y-5 ${FONT_CLASS_MAP[settings.fontFamily]} ${palette.textProse}`}
+                    style={{
+                      fontSize: `${settings.fontSize}px`,
+                      lineHeight: settings.lineHeight,
+                    }}
+                  >
+                    {(pages[pageIndex] || []).map((para, idx) => (
+                      <p key={idx}>{para}</p>
+                    ))}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
 
-              <span className={`text-xs font-medium tabular-nums ${palette.textMuted}`}>
-                Trang {pageIndex + 1} / {pages.length}
-              </span>
+              {/* Page-flip controls */}
+              <div className="flex items-center justify-between gap-4">
+                <button
+                  type="button"
+                  onClick={() => handleTurnPage(-1)}
+                  disabled={pageIndex === 0}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-md border ${palette.border} text-xs font-medium transition-colors whitespace-nowrap cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${palette.buttonIdle}`}
+                >
+                  <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+                  Trang trước
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleTurnPage(1)}
-                disabled={pageIndex >= pages.length - 1}
-                className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-md border ${palette.border} text-xs font-medium transition-colors whitespace-nowrap cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${palette.buttonIdle}`}
-              >
-                Trang sau
-                <ChevronRight className="w-4 h-4" aria-hidden="true" />
-              </button>
+                <span className={`text-xs font-medium tabular-nums ${palette.textMuted}`}>
+                  Trang {pageIndex + 1} / {pages.length}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => handleTurnPage(1)}
+                  disabled={pageIndex >= pages.length - 1}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-md border ${palette.border} text-xs font-medium transition-colors whitespace-nowrap cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${palette.buttonIdle}`}
+                >
+                  Trang sau
+                  <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* VIP Early-Access Lock Card */}
+          {/* Hiệu ứng làm mờ dần (CSS gradient fade-out) cuối đoạn đọc thử VIP */}
+          {isLockedVip && (
+            <div
+              aria-hidden="true"
+              data-testid="vip-preview-fade"
+              className={`pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-b ${palette.fadeGradient}`}
+            />
+          )}
+        </div>
+
+        {/* Khung Paywall viền vàng đồng ngay dưới vùng làm mờ */}
         {isLockedVip && (
-          <div className={`mt-10 p-6 sm:p-7 rounded-xl border border-[#C69B53]/40 ${palette.surfaceBg} space-y-4`}>
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#C69B53]">
-              <Crown className="w-4 h-4" aria-hidden="true" />
-              <span>Chương đọc trước Thành viên VIP</span>
+          <div
+            ref={paywallCardRef}
+            data-testid="vip-paywall-card"
+            className={`relative mt-2 p-6 sm:p-8 rounded-xl border border-[#C69B53]/55 ${palette.surfaceBg} space-y-5 shadow-2xl`}
+          >
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-semibold text-[#D8AE68]">
+                <span className="inline-flex items-center gap-1.5">
+                  <Crown className="w-4 h-4" aria-hidden="true" />
+                  VIP Đọc trước
+                </span>
+                <span aria-hidden="true" className={palette.textMuted}>·</span>
+                <span className={`font-normal tabular-nums ${palette.textMuted}`}>
+                  {getPublicUnlockCountdownText(chapterPublicDate, chapter.vipUnlockDate)}
+                </span>
+              </div>
+
+              <h2 className="font-display text-2xl sm:text-3xl font-semibold text-balance">
+                Mở khóa sớm dành cho Thành viên VIP
+              </h2>
+
+              <p className={`text-sm leading-relaxed ${palette.textMuted}`}>
+                Bạn đang xem bản đọc thử đầu chương. Phần nội dung tiếp theo được bảo vệ cho Thành viên VIP trước ngày mở công khai và sẽ hiển thị trọn vẹn ngay sau khi kích hoạt.
+              </p>
             </div>
-            <h2 className="font-display text-2xl font-semibold">
-              Mở khóa toàn bộ Chương {chapter.number} ngay hôm nay
-            </h2>
-            <p className={`text-sm leading-relaxed ${palette.textMuted}`}>
-              Chương này thuộc quyền lợi đọc sớm trước lịch công khai ({chapter.vipUnlockDate || 'tuần tới'}). Kích hoạt gói Thành viên VIP để đọc trọn vẹn không quảng cáo qua Ví MoMo, ZaloPay hoặc Thẻ ngân hàng nội địa.
-            </p>
-            <button
-              type="button"
-              onClick={onOpenVipModal}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-sm font-semibold transition-colors cursor-pointer"
-            >
-              <Crown className="w-4 h-4" aria-hidden="true" />
-              Mở khóa Thành viên VIP
-            </button>
+
+            {!authUser ? (
+              <div className="space-y-3 pt-1">
+                <p className={`text-xs ${palette.textMuted}`}>
+                  Đăng nhập tài khoản để lưu quyền lợi VIP vĩnh viễn và tự động đồng bộ trên mọi thiết bị.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOpenAuthModal(
+                        'Đăng nhập để kích hoạt mã VIP và đồng bộ quyền lợi đọc trước trên mọi thiết bị.'
+                      )
+                    }
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-sm font-semibold transition-colors whitespace-nowrap cursor-pointer"
+                  >
+                    <LogIn className="w-4 h-4" aria-hidden="true" />
+                    Đăng nhập để kích hoạt VIP
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onOpenVipGuideModal}
+                    className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-md border border-[#C69B53]/45 hover:border-[#C69B53] text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${palette.accentText}`}
+                  >
+                    <QrCode className="w-4 h-4" aria-hidden="true" />
+                    Hướng dẫn nhận mã VIP
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3.5 pt-1">
+                <form onSubmit={handleRedeemSubmit} className="space-y-3" noValidate>
+                  <label
+                    htmlFor="reader-vip-code-input"
+                    className={`block text-xs font-medium ${palette.textMuted}`}
+                  >
+                    Nhập mã kích hoạt VIP cho tài khoản{' '}
+                    <span className="font-semibold text-[#C69B53]">
+                      {authUser.email || authUser.displayName}
+                    </span>
+                  </label>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                    <div className="relative flex-1">
+                      <KeyRound
+                        className="w-4 h-4 text-[#C69B53] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                        aria-hidden="true"
+                      />
+                      <input
+                        ref={vipCodeInputRef}
+                        id="reader-vip-code-input"
+                        type="text"
+                        value={vipCodeInput}
+                        onChange={(e) => {
+                          setVipCodeInput(e.target.value);
+                          if (vipCodeError) setVipCodeError(null);
+                        }}
+                        placeholder="Ví dụ: VIP30-HUYETNGUYET"
+                        autoComplete="off"
+                        className={`w-full pl-9 pr-3.5 py-2.5 rounded-md border ${palette.border} ${palette.inputBg} text-sm font-mono uppercase focus:outline-none focus:border-[#C69B53]`}
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={vipRedeeming || loadingContent}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-sm font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+                    >
+                      <Lock className="w-4 h-4" aria-hidden="true" />
+                      {vipRedeeming ? 'Đang kiểm tra...' : 'Kích hoạt ngay'}
+                    </button>
+                  </div>
+
+                  {vipCodeError && (
+                    <p role="alert" className="text-xs text-[#E58A8A]">
+                      {vipCodeError}
+                    </p>
+                  )}
+                </form>
+
+                <div className={`pt-3 border-t ${palette.border} flex flex-wrap items-center justify-between gap-3`}>
+                  <button
+                    type="button"
+                    onClick={onOpenVipGuideModal}
+                    className={`inline-flex items-center gap-1.5 text-xs font-semibold hover:underline cursor-pointer ${palette.accentText}`}
+                  >
+                    <QrCode className="w-3.5 h-3.5" aria-hidden="true" />
+                    Hướng dẫn nhận mã VIP
+                  </button>
+                  {!isSupabaseConfigured && (
+                    <span className={`text-[11px] ${palette.textMuted}`}>
+                      Mã test cục bộ: <strong className="font-mono">VIP30-HUYETNGUYET</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -738,7 +1046,7 @@ export function ReaderView({
 
             <div className="flex items-center justify-between gap-3">
               <p className={`text-xs ${palette.textMuted}`}>
-                Bình luận được lưu trên trình duyệt và đi kèm trong bản sao lưu của bạn.
+                Bình luận lưu cục bộ trên trình duyệt (tác giả có thể nhúng thêm Giscus từ GitHub Discussions khi triển khai).
               </p>
               <button
                 type="submit"

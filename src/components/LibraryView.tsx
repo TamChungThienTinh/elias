@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {
   Bell,
   Bookmark,
@@ -8,27 +8,46 @@ import {
   Copy,
   Crown,
   Download,
+  KeyRound,
+  LogIn,
+  LogOut,
+  QrCode,
   RefreshCw,
   Trash2,
   Upload,
 } from 'lucide-react';
 import {CHAPTERS} from '../data/chapters';
+import {isSupabaseConfigured} from '../lib/supabase';
 import type {
   AppBackupPayload,
+  AuthUser,
   OfflineChapterRecord,
   ReaderProfile,
   ReadingProgress,
+  ViewRoute,
+  VipRedeemResult,
 } from '../types';
-import {decodeSyncCode, encodeSyncCode} from '../utils/readerLogic';
+import {
+  decodeSyncCode,
+  encodeSyncCode,
+  formatVipMembershipSummary,
+} from '../utils/readerLogic';
+
+export type LibraryTab = 'bookmarks' | 'offline' | 'sync' | 'notifications' | 'vip';
 
 interface LibraryViewProps {
+  authUser: AuthUser | null;
   profile: ReaderProfile;
   progress: ReadingProgress | null;
   readHistory: string[];
   favorites: string[];
   offlineChapters: OfflineChapterRecord[];
   backupPayload: AppBackupPayload;
+  requestedTab?: LibraryTab | null;
+  focusVipInputSignal: number;
+  onConsumeRequestedTab: () => void;
   onOpenChapter: (chapterId: string) => void;
+  onNavigate: (route: ViewRoute) => void;
   onToggleFavorite: (chapterId: string) => void;
   onToggleOffline: (chapterId: string) => void;
   onDownloadAllOffline: () => void;
@@ -36,20 +55,26 @@ interface LibraryViewProps {
   onImportBackup: (payload: AppBackupPayload) => void;
   onTriggerNotificationTest: () => void;
   onEnableNotifications: () => void;
-  onOpenVipModal: () => void;
+  onOpenAuthModal: (reason?: string) => void;
+  onSignOut: () => void;
+  onOpenVipGuideModal: () => void;
+  onRedeemVipCode: (code: string) => Promise<VipRedeemResult>;
   onNotifyToast: (message: string) => void;
 }
 
-type LibraryTab = 'bookmarks' | 'offline' | 'sync' | 'notifications' | 'vip';
-
 export function LibraryView({
+  authUser,
   profile,
   progress,
   readHistory,
   favorites,
   offlineChapters,
   backupPayload,
+  requestedTab,
+  focusVipInputSignal,
+  onConsumeRequestedTab,
   onOpenChapter,
+  onNavigate,
   onToggleFavorite,
   onToggleOffline,
   onDownloadAllOffline,
@@ -57,13 +82,60 @@ export function LibraryView({
   onImportBackup,
   onTriggerNotificationTest,
   onEnableNotifications,
-  onOpenVipModal,
+  onOpenAuthModal,
+  onSignOut,
+  onOpenVipGuideModal,
+  onRedeemVipCode,
   onNotifyToast,
 }: LibraryViewProps) {
-  const [activeTab, setActiveTab] = useState<LibraryTab>('bookmarks');
+  const [activeTab, setActiveTab] = useState<LibraryTab>(requestedTab || 'bookmarks');
   const [syncInput, setSyncInput] = useState('');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  const [vipCodeInput, setVipCodeInput] = useState('');
+  const [vipCodeError, setVipCodeError] = useState<string | null>(null);
+  const [vipRedeeming, setVipRedeeming] = useState(false);
+  const vipInputRef = useRef<HTMLInputElement | null>(null);
+
+  const vipSummary = formatVipMembershipSummary(profile.isVip, profile.vipExpiresAt);
+
+  useEffect(() => {
+    if (requestedTab) {
+      setActiveTab(requestedTab);
+      onConsumeRequestedTab();
+    }
+  }, [requestedTab, onConsumeRequestedTab]);
+
+  useEffect(() => {
+    if (focusVipInputSignal <= 0) return;
+    setActiveTab('vip');
+    window.setTimeout(() => {
+      vipInputRef.current?.scrollIntoView({behavior: 'smooth', block: 'center'});
+      vipInputRef.current?.focus();
+    }, 180);
+  }, [focusVipInputSignal]);
+
+  const handleRedeemVipSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVipCodeError(null);
+    const trimmed = vipCodeInput.trim();
+    if (!trimmed) {
+      setVipCodeError('Vui lòng nhập mã kích hoạt VIP.');
+      return;
+    }
+    setVipRedeeming(true);
+    try {
+      const res = await onRedeemVipCode(trimmed);
+      if (!res.success) {
+        setVipCodeError(res.message);
+      } else {
+        setVipCodeInput('');
+      }
+    } finally {
+      setVipRedeeming(false);
+    }
+  };
 
   const syncCode = encodeSyncCode(backupPayload);
   const totalOfflineKb = offlineChapters.reduce((sum, item) => sum + item.sizeKb, 0);
@@ -145,16 +217,41 @@ export function LibraryView({
             Thư viện &amp; Đồng bộ cá nhân
           </h1>
           <p className="text-sm text-[#9A9892] mt-2">
-            Quản lý chương yêu thích, kho đọc ngoại tuyến, sao lưu giữa các thiết bị, thông báo chương mới và gói Thành viên VIP.
+            {authUser
+              ? isSupabaseConfigured
+                ? 'Tài khoản của bạn đang đồng bộ trực tuyến lịch sử đọc, danh sách yêu thích và quyền lợi VIP với Supabase.'
+                : 'Bạn đang đăng nhập ở chế độ thử nghiệm cục bộ. Lịch sử đọc, yêu thích và trạng thái VIP được đồng bộ theo tài khoản trên thiết bị này.'
+              : 'Đăng nhập tài khoản để đồng bộ lịch sử đọc, chương yêu thích và kích hoạt Thành viên VIP trên nhiều thiết bị.'}
           </p>
         </div>
 
-        <div className="text-xs text-[#C9C5BC] flex items-center gap-2 whitespace-nowrap">
-          <span>{profile.displayName}</span>
-          <span aria-hidden="true" className="text-[#6E6D68]">·</span>
-          <span className={profile.isVip ? 'text-[#C69B53] font-semibold' : 'text-[#9A9892]'}>
-            {profile.isVip ? `Thành viên ${profile.vipPlan || 'VIP'}` : 'Độc giả tiêu chuẩn'}
-          </span>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-[#C9C5BC] shrink-0">
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <span>{authUser ? authUser.displayName : profile.displayName}</span>
+            <span aria-hidden="true" className="text-[#6E6D68]">·</span>
+            <span className={vipSummary.active ? 'text-[#C69B53] font-semibold' : 'text-[#9A9892]'}>
+              {vipSummary.tierLabel}
+            </span>
+          </div>
+          {authUser ? (
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-white/[0.12] hover:border-[#D47A7A]/60 text-[#D47A7A] transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+              Đăng xuất
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onOpenAuthModal()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] font-semibold transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" aria-hidden="true" />
+              Đăng nhập
+            </button>
+          )}
         </div>
       </div>
 
@@ -227,9 +324,18 @@ export function LibraryView({
                 Chương đã đánh dấu yêu thích
               </h2>
               {favoriteChapterObjects.length === 0 ? (
-                <p className="text-sm text-[#8E8C86] p-5 rounded-lg border border-white/[0.08] bg-[#13161F]">
-                  Bạn chưa đánh dấu chương nào. Nhấn biểu tượng đánh dấu trong Mục lục hoặc Trang đọc để lưu lại.
-                </p>
+                <div className="p-5 rounded-lg border border-white/[0.08] bg-[#13161F] space-y-3.5">
+                  <p className="text-sm text-[#8E8C86] leading-relaxed">
+                    Bạn chưa đánh dấu chương nào. Nhấn biểu tượng đánh dấu trong Mục lục hoặc Trang đọc để lưu lại.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('catalog')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-white/[0.14] hover:border-[#C69B53] text-xs font-medium text-[#F1ECE1] hover:text-[#C69B53] transition-colors cursor-pointer"
+                  >
+                    Xem Mục lục
+                  </button>
+                </div>
               ) : (
                 <ul className="divide-y divide-white/[0.08] border-t border-b border-white/[0.08]">
                   {favoriteChapterObjects.map((ch) => (
@@ -261,9 +367,19 @@ export function LibraryView({
                 Lịch sử đọc gần đây
               </h2>
               {historyChapterObjects.length === 0 ? (
-                <p className="text-sm text-[#8E8C86] p-5 rounded-lg border border-white/[0.08] bg-[#13161F]">
-                  Chưa có lịch sử đọc. Mở Chương 1 để bắt đầu ghi nhận lịch sử và gợi ý cá nhân hóa.
-                </p>
+                <div className="p-5 rounded-lg border border-white/[0.08] bg-[#13161F] space-y-3.5">
+                  <p className="text-sm text-[#8E8C86] leading-relaxed">
+                    Chưa có lịch sử đọc. Mở Chương 1 để bắt đầu ghi nhận tiến độ đọc tự động trên thiết bị này.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onOpenChapter(CHAPTERS[0].id)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" aria-hidden="true" />
+                    Mở Chương 1 ngay
+                  </button>
+                </div>
               ) : (
                 <ul className="divide-y divide-white/[0.08] border-t border-b border-white/[0.08]">
                   {historyChapterObjects.map((ch) => (
@@ -576,60 +692,158 @@ export function LibraryView({
 
       {/* TAB 5: VIP MEMBERSHIP */}
       {activeTab === 'vip' && (
-        <div className="p-6 sm:p-8 rounded-lg bg-[#13161F] border border-white/[0.09] space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-white/[0.08]">
-            <div>
-              <p className="text-xs font-medium text-[#C69B53]">Quyền lợi Thành viên</p>
-              <h2 className="font-display text-2xl font-semibold text-[#F1ECE1] mt-1">
-                {profile.isVip
-                  ? `Bạn đang là Thành viên ${profile.vipPlan || 'VIP'}`
-                  : 'Nâng cấp Thành viên VIP'}
-              </h2>
-              <p className="text-sm text-[#9A9892] mt-1.5">
-                {profile.isVip
-                  ? `Kích hoạt ngày ${profile.vipActivatedAt || 'hôm nay'} · Toàn bộ chương đọc trước Arc 2 đã mở khóa.`
-                  : 'Đọc trước chương mới sớm 7 ngày, không quảng cáo và hỗ trợ trực tiếp tác giả qua MoMo, ZaloPay hoặc thẻ ngân hàng nội địa.'}
-              </p>
+        <div className="space-y-6">
+          {/* Current Account Tier & Expiry Card */}
+          <div className="p-6 sm:p-8 rounded-xl bg-[#13161F] border border-[#C69B53]/40 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-white/[0.08]">
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-[#C69B53] inline-flex items-center gap-1.5">
+                  <Crown className="w-3.5 h-3.5" aria-hidden="true" />
+                  Trạng thái tài khoản hiện tại
+                </p>
+                <h2
+                  data-testid="library-vip-tier"
+                  className="font-display text-2xl sm:text-3xl font-semibold text-[#F5F1E8]"
+                >
+                  {vipSummary.tierLabel}
+                </h2>
+                <p
+                  data-testid="library-vip-expiry"
+                  className={`text-sm tabular-nums ${
+                    vipSummary.active ? 'text-[#D8AE68] font-medium' : 'text-[#9A9892]'
+                  }`}
+                >
+                  {vipSummary.expiryLabel}
+                </p>
+                {authUser && (
+                  <p className="text-xs text-[#8E8C86]">
+                    Tài khoản: <span className="text-[#E6E3DC]">{authUser.email}</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+                {vipSummary.active && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenChapter('arc-2-chuong-3')}
+                    className="px-4 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs font-semibold whitespace-nowrap cursor-pointer"
+                  >
+                    Đọc Chương 3 (Arc 2)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onOpenVipGuideModal}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-md border border-[#C69B53]/50 hover:bg-[#C69B53] hover:text-[#0B0D12] text-[#D8AE68] text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  <QrCode className="w-3.5 h-3.5" aria-hidden="true" />
+                  Hướng dẫn nhận mã VIP
+                </button>
+              </div>
             </div>
 
-            {profile.isVip ? (
-              <button
-                type="button"
-                onClick={() => onOpenChapter('arc-2-chuong-3')}
-                className="px-5 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs font-semibold whitespace-nowrap self-start sm:self-auto cursor-pointer"
-              >
-                Đọc Chương 3 (Arc 2)
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onOpenVipModal}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs font-semibold whitespace-nowrap self-start sm:self-auto cursor-pointer"
-              >
-                <Crown className="w-4 h-4" aria-hidden="true" />
-                Đăng ký VIP ngay
-              </button>
-            )}
-          </div>
+            {/* Redeem / Extend VIP Code Box */}
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[#F5F1E8]">
+                  {vipSummary.active ? 'Gia hạn thêm thời gian VIP' : 'Kích hoạt bằng Mã VIP'}
+                </h3>
+                <p className="text-xs text-[#9A9892] mt-1">
+                  Nhập mã kích hoạt dùng 1 lần nhận từ tác giả. Nếu bạn đang là Thành viên VIP, số ngày mới sẽ tự động cộng dồn vào ngày hết hạn hiện tại.
+                </p>
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
-            <div className="space-y-1.5">
-              <h3 className="font-semibold text-[#F1ECE1]">Đọc trước 7 ngày</h3>
-              <p className="text-xs text-[#9A9892] leading-relaxed">
-                Truy cập sớm toàn bộ chương mới thuộc Arc 2 trước khi mở công khai cho mọi độc giả.
-              </p>
+              {!authUser ? (
+                <div className="pt-1 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOpenAuthModal(
+                        'Đăng nhập tài khoản để nhập mã kích hoạt và lưu quyền lợi Thành viên VIP.'
+                      )
+                    }
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap cursor-pointer"
+                  >
+                    <LogIn className="w-4 h-4" aria-hidden="true" />
+                    Đăng nhập để kích hoạt VIP
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleRedeemVipSubmit} className="space-y-2.5" noValidate>
+                  <label htmlFor="library-vip-code-input" className="sr-only">
+                    Mã kích hoạt VIP
+                  </label>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                    <div className="relative flex-1 max-w-md">
+                      <KeyRound
+                        className="w-4 h-4 text-[#C69B53] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                        aria-hidden="true"
+                      />
+                      <input
+                        ref={vipInputRef}
+                        id="library-vip-code-input"
+                        type="text"
+                        value={vipCodeInput}
+                        onChange={(e) => {
+                          setVipCodeInput(e.target.value);
+                          if (vipCodeError) setVipCodeError(null);
+                        }}
+                        placeholder="Nhập mã kích hoạt VIP (vd: VIP30-HUYETNGUYET)"
+                        autoComplete="off"
+                        className="w-full pl-9 pr-3.5 py-2.5 rounded-md bg-[#0B0D12] border border-white/[0.14] text-sm font-mono uppercase text-[#F1ECE1] placeholder:text-[#6E6D68] focus:outline-none focus:border-[#C69B53]"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={vipRedeeming}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+                    >
+                      <Crown className="w-4 h-4" aria-hidden="true" />
+                      {vipRedeeming
+                        ? 'Đang kích hoạt...'
+                        : vipSummary.active
+                        ? 'Gia hạn ngay'
+                        : 'Kích hoạt ngay'}
+                    </button>
+                  </div>
+
+                  {vipCodeError && (
+                    <p role="alert" className="text-xs text-[#E58A8A]">
+                      {vipCodeError}
+                    </p>
+                  )}
+
+                  {!isSupabaseConfigured && (
+                    <p className="text-[11px] text-[#8E8C86]">
+                      Mã thử nghiệm cục bộ: <span className="font-mono text-[#C9C5BC]">VIP30-HUYETNGUYET</span> (30 ngày),{' '}
+                      <span className="font-mono text-[#C9C5BC]">VIP90-THACHUYEN</span> (90 ngày),{' '}
+                      <span className="font-mono text-[#C9C5BC]">VIPFULL-MACLAM</span> (Vĩnh viễn).
+                    </p>
+                  )}
+                </form>
+              )}
             </div>
-            <div className="space-y-1.5">
-              <h3 className="font-semibold text-[#F1ECE1]">Không quảng cáo</h3>
-              <p className="text-xs text-[#9A9892] leading-relaxed">
-                Giữ trọn không gian đọc yên tĩnh, tập trung hoàn toàn vào câu chữ và tranh minh họa.
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <h3 className="font-semibold text-[#F1ECE1]">Thanh toán linh hoạt</h3>
-              <p className="text-xs text-[#9A9892] leading-relaxed">
-                Hỗ trợ Ví MoMo, ZaloPay và Thẻ ngân hàng nội địa NAPAS / VietQR tiện lợi.
-              </p>
+
+            <div className="pt-5 border-t border-white/[0.08] grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+              <div className="space-y-1.5">
+                <h3 className="font-semibold text-[#F1ECE1]">Đọc trước 7 ngày</h3>
+                <p className="text-xs text-[#9A9892] leading-relaxed">
+                  Mở khóa sớm toàn bộ chương mới thuộc Arc 2 trước ngày tự động phát hành miễn phí.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="font-semibold text-[#F1ECE1]">Đồng bộ theo tài khoản</h3>
+                <p className="text-xs text-[#9A9892] leading-relaxed">
+                  Quyền lợi VIP, lịch sử đọc và danh sách chương yêu thích tự động đồng bộ qua Supabase.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="font-semibold text-[#F1ECE1]">Huy hiệu VIP vàng đồng</h3>
+                <p className="text-xs text-[#9A9892] leading-relaxed">
+                  Hiển thị huy hiệu Thành viên VIP trên thanh tài khoản và khi bình luận chương truyện.
+                </p>
+              </div>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {ExternalLink, Maximize2, Minimize2, X} from 'lucide-react';
+import {ExternalLink, Maximize2, Minimize2, ShoppingBag, X} from 'lucide-react';
 import type {MerchItem} from '../types';
 import {formatVnd, getMerchStatusLabel} from '../utils/readerLogic';
 import {SafeImage} from './SafeImage';
@@ -7,9 +7,10 @@ import {SafeImage} from './SafeImage';
 interface MerchModalProps {
   item: MerchItem | null;
   onClose: () => void;
+  onAddToCart: (item: MerchItem) => void;
 }
 
-export function MerchModal({item, onClose}: MerchModalProps) {
+export function MerchModal({item, onClose, onAddToCart}: MerchModalProps) {
   const [zoomed, setZoomed] = useState(false);
 
   useEffect(() => {
@@ -146,17 +147,28 @@ export function MerchModal({item, onClose}: MerchModalProps) {
                 </button>
               ) : (
                 <>
-                  {primaryLink && (
-                    <a
-                      href={primaryLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-sm font-semibold transition-colors whitespace-nowrap"
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => onAddToCart(item)}
+                      className="inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-sm font-semibold transition-colors whitespace-nowrap cursor-pointer"
                     >
-                      Đặt mua ngay
-                      <ExternalLink className="w-4 h-4" aria-hidden="true" />
-                    </a>
-                  )}
+                      <ShoppingBag className="w-4 h-4" aria-hidden="true" />
+                      Thêm vào giỏ
+                    </button>
+
+                    {primaryLink && (
+                      <a
+                        href={primaryLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-md border border-[#C69B53]/60 text-[#F1ECE1] hover:bg-[#C69B53]/10 text-sm font-medium transition-colors whitespace-nowrap"
+                      >
+                        Đặt mua ngay
+                        <ExternalLink className="w-4 h-4 text-[#C69B53]" aria-hidden="true" />
+                      </a>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-3 gap-2">
                     {item.orderLinks.shopee && (

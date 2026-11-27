@@ -1,4 +1,11 @@
-import type {Arc, Chapter, ChapterComment, NovelInfo, RecommendedStory} from '../types';
+import type {
+  Arc,
+  AuthorAnnouncement,
+  Chapter,
+  ChapterComment,
+  NovelInfo,
+  RecommendedStory,
+} from '../types';
 
 /**
  * ============================================================================
@@ -24,7 +31,7 @@ import type {Arc, Chapter, ChapterComment, NovelInfo, RecommendedStory} from '..
  */
 
 export const NOVEL_INFO: NovelInfo = {
-  title: 'Huyết Nguyệt Cố Đô',
+  title: 'Huyết Án Đa Diện',
   subtitle: 'Biên Niên Sử Tro Tàn',
   author: 'Mặc Lâm',
   genres: ['Dark Fantasy', 'Kỳ Ảo Cổ Điển', 'Huyền Bí'],
@@ -131,7 +138,9 @@ export const CHAPTERS: Chapter[] = [
     tags: ['Arc 2', 'Hầm mộ', 'VIP Đọc trước'],
     isVipEarlyAccess: true,
     vipUnlockDate: '03/12/2026',
-    authorNote: 'Chương mở đầu Arc 2 dành riêng cho độc giả Thành viên VIP đọc trước 7 ngày. Bạn có thể kích hoạt gói Thành viên ngay trên trang để trải nghiệm toàn bộ chương này.',
+    publicDate: '2026-12-03T13:00:00Z',
+    previewParagraphCount: 2,
+    authorNote: 'Chương mở đầu Arc 2 dành riêng cho độc giả Thành viên VIP đọc trước 7 ngày trước khi mở công khai. Nhập mã kích hoạt VIP để đọc trọn vẹn chương này.',
     paragraphs: [
       'Cầu thang xoắn ốc dẫn xuống lòng đất dưới chân Tháp Nhật Thực lạnh hơn mặt cầu bên ngoài rất nhiều. Không khí ở đây khô khốc, thoang thoảng mùi giấy cũ, đồng oxy hóa và hương trầm cháy dở đã lắng đọng qua hàng chục năm không có gió lùa.',
       'Tô Vãn — nữ học giả của Hội Lưu Trữ — bước sát phía sau Trần Khắc, một tay ôm chặt hộp gỗ sơn mài, tay kia lướt nhẹ qua những bức phù điêu khắc chìm dọc tường đá. Ánh sáng vàng ấm từ chiếc đèn đồng vẽ nên những bóng đổ dài chập chờn, khiến hình ảnh các hiệp sĩ quỳ gối dâng kiếm trên vách đá như đang khẽ cử động.',
@@ -144,22 +153,23 @@ export const CHAPTERS: Chapter[] = [
 ];
 
 /**
- * BẢNG XẾP HẠNG TUẦN & GỢI Ý TRUYỆN CÙNG VŨ TRỤ
- * Bạn có thể chỉnh sửa hoặc bổ sung thêm các ngoại truyện / phần tiếp theo tại đây.
+ * THÔNG BÁO TÁC GIẢ & LỊCH RA CHƯƠNG (HIỂN THỊ TRÊN TRANG CHỦ)
+ */
+export const AUTHOR_ANNOUNCEMENT: AuthorAnnouncement = {
+  title: 'Thông báo từ Mặc Lâm',
+  updatedAt: '26/11/2026',
+  nextReleaseLabel: 'Chủ Nhật · 20:00 (29/11/2026)',
+  nextReleaseTitle: 'Chương 4 (Arc 2): Hầm Mộ Đá Huyền Vũ',
+  progressNote: 'Bản thảo Arc 2 đã hoàn thiện 60% · Đang vẽ minh họa nhân vật Tô Vãn',
+  message:
+    'Cảm ơn các bạn đã theo dõi những chương đầu tiên của Huyết Nguyệt Cố Đô. Từ Arc 2 trở đi, mỗi chương mới sẽ có thêm minh họa bối cảnh và mở đọc sớm 7 ngày cho Thành viên VIP trước khi phát hành miễn phí.',
+};
+
+/**
+ * NGOẠI TRUYỆN & TÁC PHẨM MỞ RỘNG CÙNG VŨ TRỤ THẠCH UYÊN
+ * (Loại bỏ chính truyện đang xem để tránh lặp lại, mỗi thẻ có dòng gợi ý riêng)
  */
 export const RECOMMENDED_SERIES: RecommendedStory[] = [
-  {
-    id: 'series-huyet-nguyet',
-    title: 'Huyết Nguyệt Cố Đô',
-    arcHint: 'Chính truyện · Arc 1 & Arc 2',
-    genre: 'Dark Fantasy',
-    tags: ['Khởi đầu', 'Cố đô', 'Tháp chuông', 'Kỳ ảo'],
-    weeklyReads: 36150,
-    favorites: 3252,
-    blurb: 'Hành trình của người gác đèn đồng giữa kinh thành Thạch Uyên chìm trong đêm nhật thực vĩnh cửu.',
-    linkedChapterId: 'arc-1-chuong-1',
-    coverImage: './src/assets/images/novel_cover_huyet_nguyet_1795755469511.jpg',
-  },
   {
     id: 'series-ky-si-tro-tan',
     title: 'Ngoại Truyện: Đội Cận Vệ Tro Tàn',
@@ -169,20 +179,35 @@ export const RECOMMENDED_SERIES: RecommendedStory[] = [
     weeklyReads: 21480,
     favorites: 1890,
     blurb: 'Đêm cuối cùng trước khi cổng Thạch Uyên đóng lại và lời thề của bảy kỵ sĩ khiên đầu sói.',
+    defaultReason: 'Nên đọc sau Arc 1',
     linkedChapterId: 'arc-1-chuong-2',
     coverImage: './src/assets/images/hero_blood_moon_citadel_1795755470351.jpg',
   },
   {
     id: 'series-hoi-luu-tru',
     title: 'Hồ Sơ Hội Lưu Trữ Sương Mù',
-    arcHint: 'Ghi chép thế giới quan · VIP',
+    arcHint: 'Ghi chép thế giới quan',
     genre: 'Huyền Bí Cổ Điển',
     tags: ['Bí ẩn', 'Arc 2', 'Tháp chuông', 'VIP Đọc trước'],
     weeklyReads: 16720,
     favorites: 1415,
     blurb: 'Những bản đồ hầm mộ, ký tự cổ và ghi chép mật được Tô Vãn mang theo vào Tháp Nhật Thực.',
+    defaultReason: 'Bổ sung bối cảnh thế giới',
     linkedChapterId: 'arc-2-chuong-3',
     coverImage: './src/assets/images/merch_hardcover_artbook_1795755469745.jpg',
+  },
+  {
+    id: 'series-bien-ban-nhat-thuc',
+    title: 'Biên Bản Đêm Nhật Thực Thứ Bảy',
+    arcHint: 'Truyện ngắn · Học Viện Bắc Phố',
+    genre: 'Kỳ Ảo Cổ Điển',
+    tags: ['Khởi đầu', 'Kỳ ảo', 'Cố đô'],
+    weeklyReads: 13290,
+    favorites: 1120,
+    blurb: 'Bức thư cuối cùng vị sư phụ để lại cho Trần Khắc trước khi ngọn đèn đồng đầu tiên được thắp lên.',
+    defaultReason: 'Giải mã nguồn gốc chiếc đèn đồng',
+    linkedChapterId: 'arc-1-chuong-1',
+    coverImage: './src/assets/images/merch_art_print_1795755469687.jpg',
   },
 ];
 

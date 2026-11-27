@@ -1,6 +1,8 @@
 import {INITIAL_COMMENTS} from '../data/chapters';
 import type {
   AppBackupPayload,
+  AuthUser,
+  CartItem,
   ChapterComment,
   OfflineChapterRecord,
   ReaderProfile,
@@ -11,6 +13,8 @@ import type {
 const STORAGE_KEY = 'huyet_nguyet_co_do_state_v1';
 
 export interface PersistedState {
+  authUser: AuthUser | null;
+  usedMockVipCodes: string[];
   profile: ReaderProfile;
   settings: ReaderSettings;
   progress: ReadingProgress | null;
@@ -19,6 +23,7 @@ export interface PersistedState {
   offlineChapters: OfflineChapterRecord[];
   comments: ChapterComment[];
   likedCommentIds: string[];
+  cart: CartItem[];
 }
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
@@ -33,11 +38,14 @@ export const DEFAULT_PROFILE: ReaderProfile = {
   displayName: 'Độc giả Thạch Uyên',
   email: '',
   isVip: false,
+  vipExpiresAt: null,
   notificationsEnabled: false,
   autoBackupEnabled: true,
 };
 
 export const DEFAULT_STATE: PersistedState = {
+  authUser: null,
+  usedMockVipCodes: [],
   profile: DEFAULT_PROFILE,
   settings: DEFAULT_SETTINGS,
   progress: null,
@@ -46,6 +54,7 @@ export const DEFAULT_STATE: PersistedState = {
   offlineChapters: [],
   comments: INITIAL_COMMENTS,
   likedCommentIds: [],
+  cart: [],
 };
 
 export function loadPersistedState(): PersistedState {
@@ -54,6 +63,10 @@ export function loadPersistedState(): PersistedState {
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw) as Partial<PersistedState>;
     return {
+      authUser: parsed.authUser ?? null,
+      usedMockVipCodes: Array.isArray(parsed.usedMockVipCodes)
+        ? parsed.usedMockVipCodes
+        : [],
       profile: {...DEFAULT_PROFILE, ...(parsed.profile ?? {})},
       settings: {...DEFAULT_SETTINGS, ...(parsed.settings ?? {})},
       progress: parsed.progress ?? null,
@@ -68,6 +81,7 @@ export function loadPersistedState(): PersistedState {
       likedCommentIds: Array.isArray(parsed.likedCommentIds)
         ? parsed.likedCommentIds
         : [],
+      cart: Array.isArray(parsed.cart) ? parsed.cart : [],
     };
   } catch {
     return DEFAULT_STATE;

@@ -1,4 +1,5 @@
 import {useState} from 'react';
+import {ShoppingBag} from 'lucide-react';
 import {MERCH_ITEMS} from '../data/merch';
 import type {MerchCategory, MerchItem, MerchStatus} from '../types';
 import {
@@ -10,6 +11,7 @@ import {SafeImage} from './SafeImage';
 
 interface MerchViewProps {
   onSelectMerch: (item: MerchItem) => void;
+  onAddToCart: (item: MerchItem) => void;
 }
 
 const CATEGORY_TABS: Array<{id: MerchCategory | 'all'; label: string}> = [
@@ -27,7 +29,7 @@ const STATUS_OPTIONS: Array<{id: MerchStatus | 'all'; label: string}> = [
   {id: 'het-hang', label: 'Hết hàng'},
 ];
 
-export function MerchView({onSelectMerch}: MerchViewProps) {
+export function MerchView({onSelectMerch, onAddToCart}: MerchViewProps) {
   const [category, setCategory] = useState<MerchCategory | 'all'>('all');
   const [status, setStatus] = useState<MerchStatus | 'all'>('all');
 
@@ -43,7 +45,7 @@ export function MerchView({onSelectMerch}: MerchViewProps) {
             Bộ sưu tập Merch Huyết Nguyệt
           </h1>
           <p className="text-sm text-[#9A9892] mt-2 leading-relaxed">
-            Standee acrylic, móc khóa kim loại tráng men, tranh in mỹ thuật và artbook phát hành giới hạn. Bấm vào từng sản phẩm để xem ảnh lớn và đặt mua qua Shopee, Zalo hoặc Google Form.
+            Standee acrylic, móc khóa kim loại tráng men, tranh in mỹ thuật và artbook phát hành giới hạn. Thêm nhanh vào giỏ hàng hoặc bấm xem ảnh lớn để đặt trực tiếp qua Shopee, Zalo, Google Form.
           </p>
         </div>
 
@@ -117,6 +119,7 @@ export function MerchView({onSelectMerch}: MerchViewProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
           {items.map((item) => {
             const statusText = getMerchStatusLabel(item.status);
+            const isOutOfStock = item.status === 'het-hang';
             const statusClass =
               item.status === 'con-hang'
                 ? 'text-[#7EC49A]'
@@ -125,21 +128,24 @@ export function MerchView({onSelectMerch}: MerchViewProps) {
                 : 'text-[#D47A7A]';
 
             return (
-              <button
+              <article
                 key={item.id}
-                type="button"
-                onClick={() => onSelectMerch(item)}
-                className="group text-left bg-[#13161F] border border-white/[0.08] hover:border-[#C69B53]/50 rounded-lg overflow-hidden transition-transform duration-200 hover:-translate-y-0.5 flex flex-col cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C69B53]"
+                className="group bg-[#13161F] border border-white/[0.08] hover:border-[#C69B53]/50 rounded-lg overflow-hidden transition-transform duration-200 hover:-translate-y-0.5 flex flex-col"
               >
-                <div className="relative w-full aspect-[4/3] bg-[#0D1017] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => onSelectMerch(item)}
+                  aria-label={`Xem chi tiết ${item.name}`}
+                  className="relative w-full aspect-[4/3] bg-[#0D1017] overflow-hidden block cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C69B53]"
+                >
                   <SafeImage
                     src={item.image}
                     alt={item.name}
                     className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03] ${
-                      item.status === 'het-hang' ? 'opacity-65' : ''
+                      isOutOfStock ? 'opacity-65' : ''
                     }`}
                   />
-                </div>
+                </button>
 
                 <div className="p-5 flex flex-col flex-1 justify-between gap-4">
                   <div className="space-y-1.5">
@@ -150,24 +156,49 @@ export function MerchView({onSelectMerch}: MerchViewProps) {
                         {statusText}
                       </span>
                     </div>
-                    <h2 className="font-ui text-base font-semibold text-[#F1ECE1] group-hover:text-[#C69B53] transition-colors leading-snug">
-                      {item.name}
+                    <h2 className="font-ui text-base font-semibold text-[#F1ECE1] leading-snug">
+                      <button
+                        type="button"
+                        onClick={() => onSelectMerch(item)}
+                        className="text-left hover:text-[#C69B53] transition-colors cursor-pointer"
+                      >
+                        {item.name}
+                      </button>
                     </h2>
                     <p className="text-xs text-[#8E8C86] line-clamp-2 leading-relaxed">
                       {item.dimensions}
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-white/[0.07]">
-                    <span className="text-[15px] font-semibold text-[#C69B53] tabular-nums">
-                      {formatVnd(item.priceVnd)}
-                    </span>
-                    <span className="text-xs font-medium text-[#C9C5BC] group-hover:text-[#C69B53] transition-colors">
-                      {item.status === 'het-hang' ? 'Xem thông tin' : 'Đặt mua'}
-                    </span>
+                  <div className="space-y-3 pt-3 border-t border-white/[0.07]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[15px] font-semibold text-[#C69B53] tabular-nums">
+                        {formatVnd(item.priceVnd)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onSelectMerch(item)}
+                        className="px-3 py-2 rounded-md border border-white/[0.12] hover:border-[#C69B53] text-xs font-medium text-[#E6E3DC] hover:text-[#C69B53] transition-colors whitespace-nowrap cursor-pointer"
+                      >
+                        Xem chi tiết
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isOutOfStock}
+                        onClick={() => onAddToCart(item)}
+                        aria-label={`Thêm ${item.name} vào giỏ`}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:bg-white/[0.07] disabled:text-[#7D7B75] disabled:cursor-not-allowed"
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5" aria-hidden="true" />
+                        {isOutOfStock ? 'Hết hàng' : 'Thêm vào giỏ'}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </button>
+              </article>
             );
           })}
         </div>

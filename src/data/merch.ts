@@ -23,19 +23,19 @@ import type {MerchItem} from '../types';
 export const MERCH_ITEMS: MerchItem[] = [
   {
     id: 'merch-standee-ke-gac-den',
-    name: 'Standee Acrylic — Kỵ Sĩ Bóng Đêm & Đèn Đồng',
+    name: 'Standee Acrylic — Trần Khắc & Ngọn Đèn Đồng',
     category: 'standee',
     categoryLabel: 'Standee',
     priceVnd: 185000,
     status: 'con-hang',
     featured: true,
     // >>> THAY ĐƯỜNG DẪN ẢNH SẢN PHẨM TẠI ĐÂY <<<
-    image: './src/assets/images/merch_acrylic_standee_1795755469235.jpg',
+    image: './src/assets/images/merch_acrylic_standee_clean_1795760123504.jpg',
     dimensions: 'Cao 16 cm × Rộng 11 cm · Đế tròn dày 5 mm',
-    material: 'Acrylic trong suốt 2 mặt chống xước, đế in nhũ vàng đồng',
+    material: 'Acrylic trong suốt 2 mặt chống xước, đế đen khắc hoa văn trăng khuyết vàng đồng',
     releaseNote: 'Đợt in đầu tiên — tặng kèm thẻ nhân vật ép kim',
     description:
-      'Standee minh họa nhân vật Kỵ Sĩ Bóng Đêm trong Arc 1 với họa tiết thành quách nền sâu và phần đế tròn khắc cổ tự ánh vàng đồng. In UV sắc nét hai lớp, phù hợp trưng bày bàn làm việc hoặc kệ sách sưu tầm.',
+      'Standee minh họa nhân vật chính Trần Khắc tay cầm ngọn đèn đồng trước bóng dáng thành Thạch Uyên. Phần đế tròn đen nhám khắc hoa văn trăng khuyết ánh đồng tối giản đồng bộ nhận diện Huyết Nguyệt Cố Đô.',
     orderLinks: {
       shopee: 'https://shopee.vn/',
       zalo: 'https://zalo.me/',

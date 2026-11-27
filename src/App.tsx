@@ -1,13 +1,27 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {CHAPTERS} from './data/chapters';
+import {MERCH_ITEMS} from './data/merch';
+import {isSupabaseConfigured, supabase} from './lib/supabase';
+import {
+  fetchSupabaseProfile,
+  redeemVipCodeService,
+  syncLibraryToSupabase,
+} from './services/vipService';
 import type {
   AppBackupPayload,
+  AuthUser,
   MerchItem,
   ReaderProfile,
   ReaderSettings,
   ViewRoute,
+  VipRedeemResult,
 } from './types';
-import {estimateChapterSizeKb} from './utils/readerLogic';
+import {
+  calculateCartTotals,
+  estimateChapterSizeKb,
+  isChapterVipCurrentlyLocked,
+  isUserVipActive,
+} from './utils/readerLogic';
 import {
   createBackupPayload,
   loadPersistedState,
@@ -20,9 +34,11 @@ import {HomeView} from './components/HomeView';
 import {CatalogView} from './components/CatalogView';
 import {ReaderView} from './components/ReaderView';
 import {MerchView} from './components/MerchView';
-import {LibraryView} from './components/LibraryView';
+import {LibraryView, type LibraryTab} from './components/LibraryView';
 import {MerchModal} from './components/MerchModal';
-import {VipCheckoutModal} from './components/VipCheckoutModal';
+import {CartDrawer} from './components/CartDrawer';
+import {AuthModal} from './components/AuthModal';
+import {VipGuideModal} from './components/VipGuideModal';
 
 function parseHashRoute(): {route: ViewRoute; chapterId?: string} {
   const hash = window.location.hash.replace(/^#\/?/, '');
@@ -50,7 +66,13 @@ export default function App() {
       CHAPTERS[0].id
   );
   const [selectedMerch, setSelectedMerch] = useState<MerchItem | null>(null);
-  const [vipModalOpen, setVipModalOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [vipGuideOpen, setVipGuideOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authReason, setAuthReason] = useState<string | null>(null);
+  const [requestedLibraryTab, setRequestedLibraryTab] =
+    useState<LibraryTab | null>(null);
+  const [focusVipInputSignal, setFocusVipInputSignal] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -59,7 +81,7 @@ export default function App() {
 
   useEffect(() => {
     if (!toastMessage) return;
-    const timer = window.setTimeout(() => setToastMessage(null), 3200);
+    const timer = window.setTimeout(() => setToastMessage(null), 3400);
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
 
@@ -67,6 +89,113 @@ export default function App() {
   useEffect(() => {
     savePersistedState(persisted);
   }, [persisted]);
+
+  // Lắng nghe phiên đăng nhập Supabase thật (khi đã cấu hình VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY)
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const applySupabaseSession = async (
+      sessionUser: {
+        id: string;
+        email?: string;
+        app_metadata?: {provider?: string};
+        user_metadata?: {
+          full_name?: string;
+          name?: string;
+          display_name?: string;
+          avatar_url?: string;
+        };
+      } | null
+    ) => {
+      if (!sessionUser) {
+        setPersisted((prev) => ({
+          ...prev,
+          authUser: null,
+          profile: {
+            ...prev.profile,
+            isVip: false,
+            vipExpiresAt: null,
+          },
+        }));
+        return;
+      }
+
+      const cloudProfile = await fetchSupabaseProfile(sessionUser.id);
+      const fallbackName =
+        sessionUser.user_metadata?.full_name ||
+        sessionUser.user_metadata?.name ||
+        sessionUser.user_metadata?.display_name ||
+        (sessionUser.email ? sessionUser.email.split('@')[0] : 'Độc giả');
+
+      const displayName = cloudProfile?.display_name || fallbackName;
+      const avatarUrl =
+        cloudProfile?.avatar_url || sessionUser.user_metadata?.avatar_url;
+
+      const authUser: AuthUser = {
+        id: sessionUser.id,
+        email: sessionUser.email || cloudProfile?.email || '',
+        displayName,
+        avatarUrl,
+        provider:
+          sessionUser.app_metadata?.provider === 'google' ? 'google' : 'email',
+      };
+
+      setPersisted((prev) => {
+        const mergedHistory = Array.from(
+          new Set([...(cloudProfile?.read_history || []), ...prev.readHistory])
+        ).slice(0, 30);
+        const mergedFavorites = Array.from(
+          new Set([...(cloudProfile?.favorites || []), ...prev.favorites])
+        );
+
+        return {
+          ...prev,
+          authUser,
+          readHistory: mergedHistory,
+          favorites: mergedFavorites,
+          profile: {
+            ...prev.profile,
+            displayName,
+            email: authUser.email,
+            avatarUrl,
+            isVip: Boolean(cloudProfile?.is_vip),
+            vipExpiresAt: cloudProfile?.vip_expires_at ?? null,
+          },
+        };
+      });
+    };
+
+    supabase.auth.getSession().then(({data}) => {
+      applySupabaseSession(data.session?.user ?? null);
+    });
+
+    const {data: listener} = supabase.auth.onAuthStateChange((_event, session) => {
+      applySupabaseSession(session?.user ?? null);
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // Tự động đồng bộ readHistory & favorites lên bảng profiles của Supabase khi user đã đăng nhập
+  useEffect(() => {
+    if (!isSupabaseConfigured || !persisted.authUser) return;
+    const timer = window.setTimeout(() => {
+      syncLibraryToSupabase({
+        userId: persisted.authUser!.id,
+        displayName: persisted.profile.displayName,
+        readHistory: persisted.readHistory,
+        favorites: persisted.favorites,
+      });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [
+    persisted.authUser,
+    persisted.profile.displayName,
+    persisted.readHistory,
+    persisted.favorites,
+  ]);
 
   // Đồng bộ hash URL cho nút Back/Forward của trình duyệt (an toàn với GitHub Pages base './')
   useEffect(() => {
@@ -128,10 +257,241 @@ export default function App() {
     openChapter(CHAPTERS[0].id);
   }, [openChapter]);
 
-  const handlePrimaryReadClick = useCallback(() => {
-    const targetId = persisted.progress?.chapterId || CHAPTERS[0].id;
-    openChapter(targetId);
-  }, [persisted.progress?.chapterId, openChapter]);
+  const handleOpenAuthModal = useCallback((reason?: string) => {
+    setAuthReason(reason || null);
+    setAuthModalOpen(true);
+  }, []);
+
+  const handleEmailLogin = useCallback(
+    async (email: string, password: string): Promise<{error?: string}> => {
+      if (isSupabaseConfigured && supabase) {
+        const {error} = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) {
+          return {
+            error:
+              error.message === 'Invalid login credentials'
+                ? 'Email hoặc mật khẩu chưa chính xác.'
+                : error.message,
+          };
+        }
+        showToast('Đăng nhập thành công!');
+        return {};
+      }
+
+      // Mock Mode đăng nhập nhanh khi chưa gắn Supabase thật
+      const nameFromEmail = email.split('@')[0] || 'Độc giả';
+      const displayName =
+        nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+      const mockUser: AuthUser = {
+        id: `mock-${email.toLowerCase()}`,
+        email,
+        displayName,
+        provider: 'mock',
+      };
+      setPersisted((prev) => ({
+        ...prev,
+        authUser: mockUser,
+        profile: {
+          ...prev.profile,
+          displayName:
+            prev.profile.email === email && prev.profile.displayName
+              ? prev.profile.displayName
+              : displayName,
+          email,
+        },
+      }));
+      showToast(`Chào mừng ${displayName} quay trở lại!`);
+      return {};
+    },
+    [showToast]
+  );
+
+  const handleEmailSignUp = useCallback(
+    async (
+      email: string,
+      password: string,
+      displayName: string
+    ): Promise<{error?: string; info?: string}> => {
+      if (isSupabaseConfigured && supabase) {
+        const {data, error} = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {full_name: displayName, display_name: displayName},
+          },
+        });
+        if (error) {
+          return {error: error.message};
+        }
+        if (!data.session) {
+          return {
+            info: 'Đăng ký thành công! Vui lòng kiểm tra hộp thư email để xác nhận tài khoản trước khi đăng nhập.',
+          };
+        }
+        showToast(`Chào mừng ${displayName} gia nhập Huyết Nguyệt!`);
+        return {};
+      }
+
+      // Mock Mode tạo tài khoản
+      const mockUser: AuthUser = {
+        id: `mock-${email.toLowerCase()}`,
+        email,
+        displayName,
+        provider: 'mock',
+      };
+      setPersisted((prev) => ({
+        ...prev,
+        authUser: mockUser,
+        profile: {
+          ...prev.profile,
+          displayName,
+          email,
+        },
+      }));
+      showToast(`Đã tạo tài khoản ${displayName} thành công!`);
+      return {};
+    },
+    [showToast]
+  );
+
+  const handleGoogleLogin = useCallback(async (): Promise<{error?: string}> => {
+    if (isSupabaseConfigured && supabase) {
+      const {error} = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.href,
+        },
+      });
+      if (error) {
+        return {error: error.message};
+      }
+      return {};
+    }
+
+    // Mock Mode Google OAuth
+    const mockUser: AuthUser = {
+      id: 'mock-google-reader',
+      email: 'docgia.thachuyen@gmail.com',
+      displayName: 'Minh Quân',
+      provider: 'google',
+    };
+    setPersisted((prev) => ({
+      ...prev,
+      authUser: mockUser,
+      profile: {
+        ...prev.profile,
+        displayName: mockUser.displayName,
+        email: mockUser.email,
+      },
+    }));
+    showToast('Đã đăng nhập nhanh với Google (Chế độ thử nghiệm).');
+    return {};
+  }, [showToast]);
+
+  const handleSignOut = useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    }
+    setPersisted((prev) => ({
+      ...prev,
+      authUser: null,
+      profile: {
+        ...prev.profile,
+        isVip: false,
+        vipExpiresAt: null,
+      },
+    }));
+    showToast('Đã đăng xuất khỏi tài khoản.');
+  }, [showToast]);
+
+  const handleRedeemVipCode = useCallback(
+    async (inputCode: string): Promise<VipRedeemResult> => {
+      const result = await redeemVipCodeService({
+        inputCode,
+        authUser: persisted.authUser,
+        currentIsVip: persisted.profile.isVip,
+        currentVipExpiresAt: persisted.profile.vipExpiresAt,
+        usedMockCodes: persisted.usedMockVipCodes,
+      });
+
+      if (result.success) {
+        setPersisted((prev) => ({
+          ...prev,
+          usedMockVipCodes: result.redeemedCode
+            ? Array.from(new Set([...prev.usedMockVipCodes, result.redeemedCode]))
+            : prev.usedMockVipCodes,
+          profile: {
+            ...prev.profile,
+            isVip: true,
+            vipExpiresAt: result.vipExpiresAt ?? null,
+            vipPlan:
+              result.vipExpiresAt === null
+                ? 'VIP Vĩnh viễn'
+                : result.durationDays
+                ? `VIP ${result.durationDays} ngày`
+                : 'VIP',
+            vipActivatedAt: new Date().toLocaleDateString('vi-VN'),
+          },
+        }));
+        showToast(result.message);
+      }
+
+      return result;
+    },
+    [
+      persisted.authUser,
+      persisted.profile.isVip,
+      persisted.profile.vipExpiresAt,
+      persisted.usedMockVipCodes,
+      showToast,
+    ]
+  );
+
+  const handleAddToCart = useCallback(
+    (item: MerchItem) => {
+      if (item.status === 'het-hang') return;
+      setPersisted((prev) => {
+        const existing = prev.cart.find((c) => c.merchId === item.id);
+        const nextCart = existing
+          ? prev.cart.map((c) =>
+              c.merchId === item.id ? {...c, quantity: c.quantity + 1} : c
+            )
+          : [...prev.cart, {merchId: item.id, quantity: 1}];
+        return {...prev, cart: nextCart};
+      });
+      showToast(`Đã thêm "${item.name}" vào giỏ hàng.`);
+    },
+    [showToast]
+  );
+
+  const handleUpdateCartQuantity = useCallback(
+    (merchId: string, delta: number) => {
+      setPersisted((prev) => ({
+        ...prev,
+        cart: prev.cart
+          .map((c) =>
+            c.merchId === merchId ? {...c, quantity: c.quantity + delta} : c
+          )
+          .filter((c) => c.quantity > 0),
+      }));
+    },
+    []
+  );
+
+  const handleRemoveCartItem = useCallback((merchId: string) => {
+    setPersisted((prev) => ({
+      ...prev,
+      cart: prev.cart.filter((c) => c.merchId !== merchId),
+    }));
+  }, []);
+
+  const handleClearCart = useCallback(() => {
+    setPersisted((prev) => ({...prev, cart: []}));
+    showToast('Đã xóa toàn bộ sản phẩm trong giỏ hàng.');
+  }, [showToast]);
 
   const handleUpdateSettings = useCallback((patch: Partial<ReaderSettings>) => {
     setPersisted((prev) => ({
@@ -228,6 +588,10 @@ export default function App() {
   const handleUpdateProfile = useCallback((patch: Partial<ReaderProfile>) => {
     setPersisted((prev) => ({
       ...prev,
+      authUser:
+        prev.authUser && patch.displayName
+          ? {...prev.authUser, displayName: patch.displayName}
+          : prev.authUser,
       profile: {...prev.profile, ...patch},
     }));
   }, []);
@@ -262,7 +626,10 @@ export default function App() {
             content,
             createdAt: new Date().toLocaleDateString('vi-VN'),
             likes: 0,
-            isVipBadge: prev.profile.isVip,
+            isVipBadge: isUserVipActive(
+              prev.profile.isVip,
+              prev.profile.vipExpiresAt
+            ),
           },
           ...prev.comments,
         ],
@@ -283,24 +650,6 @@ export default function App() {
       };
     });
   }, []);
-
-  const handleActivateVip = useCallback(
-    (planName: string, displayName: string, contact: string) => {
-      setPersisted((prev) => ({
-        ...prev,
-        profile: {
-          ...prev.profile,
-          displayName,
-          email: contact,
-          isVip: true,
-          vipPlan: planName,
-          vipActivatedAt: new Date().toLocaleDateString('vi-VN'),
-        },
-      }));
-      showToast(`Đã kích hoạt ${planName} — toàn bộ chương VIP đã mở khóa!`);
-    },
-    [showToast]
-  );
 
   const handleEnableNotifications = useCallback(async () => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -343,18 +692,53 @@ export default function App() {
     [activeChapterId]
   );
 
+  const isVipActive = useMemo(
+    () =>
+      isUserVipActive(persisted.profile.isVip, persisted.profile.vipExpiresAt),
+    [persisted.profile.isVip, persisted.profile.vipExpiresAt]
+  );
+
+  const handleOpenVipTab = useCallback(() => {
+    setRequestedLibraryTab('vip');
+    navigate('library');
+  }, [navigate]);
+
+  const handleGoToRedeemInputFromGuide = useCallback(() => {
+    setVipGuideOpen(false);
+    if (
+      route === 'reader' &&
+      isChapterVipCurrentlyLocked(activeChapter, isVipActive)
+    ) {
+      setFocusVipInputSignal((n) => n + 1);
+      return;
+    }
+    setRequestedLibraryTab('vip');
+    navigate('library');
+    setFocusVipInputSignal((n) => n + 1);
+  }, [route, activeChapter, isVipActive, navigate]);
+
   const backupPayload = useMemo(
     () => createBackupPayload(persisted),
     [persisted]
+  );
+
+  const cartTotals = useMemo(
+    () => calculateCartTotals(persisted.cart, MERCH_ITEMS),
+    [persisted.cart]
   );
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0B0D12] text-[#E6E3DC]">
       <Header
         currentRoute={route}
-        progress={persisted.progress}
+        cartCount={cartTotals.totalQuantity}
+        authUser={persisted.authUser}
+        isVipActive={isVipActive}
         onNavigate={(r) => navigate(r)}
-        onPrimaryReadClick={handlePrimaryReadClick}
+        onOpenCart={() => setCartOpen(true)}
+        onOpenAuthModal={() => handleOpenAuthModal()}
+        onOpenVipTab={handleOpenVipTab}
+        onSignOut={handleSignOut}
       />
 
       <main className="flex-1">
@@ -363,20 +747,25 @@ export default function App() {
             progress={persisted.progress}
             readHistory={persisted.readHistory}
             favorites={persisted.favorites}
-            isVip={persisted.profile.isVip}
+            isVip={isVipActive}
+            notificationsEnabled={persisted.profile.notificationsEnabled}
             onStartFromBeginning={handleStartFromBeginning}
             onOpenChapter={openChapter}
             onNavigate={(r) => navigate(r)}
             onSelectMerch={setSelectedMerch}
+            onAddToCart={handleAddToCart}
+            onOpenVipModal={() => setVipGuideOpen(true)}
+            onEnableNotifications={handleEnableNotifications}
           />
         )}
 
         {route === 'catalog' && (
           <CatalogView
             progress={persisted.progress}
+            readHistory={persisted.readHistory}
             favorites={persisted.favorites}
             offlineChapters={persisted.offlineChapters}
-            isVip={persisted.profile.isVip}
+            isVip={isVipActive}
             onOpenChapter={openChapter}
             onToggleFavorite={handleToggleFavorite}
             onToggleOffline={handleToggleOffline}
@@ -389,12 +778,16 @@ export default function App() {
             chapter={activeChapter}
             settings={persisted.settings}
             progress={persisted.progress}
+            authUser={persisted.authUser}
             isFavorite={persisted.favorites.includes(activeChapter.id)}
             isOfflineSaved={persisted.offlineChapters.some(
               (r) => r.chapterId === activeChapter.id
             )}
-            isVip={persisted.profile.isVip}
-            defaultAuthorName={persisted.profile.displayName}
+            isVip={isVipActive}
+            focusVipInputSignal={focusVipInputSignal}
+            defaultAuthorName={
+              persisted.authUser?.displayName || persisted.profile.displayName
+            }
             comments={persisted.comments}
             likedCommentIds={persisted.likedCommentIds}
             onUpdateSettings={handleUpdateSettings}
@@ -403,23 +796,35 @@ export default function App() {
             onBackToCatalog={() => navigate('catalog')}
             onToggleFavorite={handleToggleFavorite}
             onToggleOffline={handleToggleOffline}
-            onOpenVipModal={() => setVipModalOpen(true)}
+            onOpenAuthModal={handleOpenAuthModal}
+            onOpenVipGuideModal={() => setVipGuideOpen(true)}
+            onRedeemVipCode={handleRedeemVipCode}
             onAddComment={handleAddComment}
             onToggleLikeComment={handleToggleLikeComment}
           />
         )}
 
-        {route === 'merch' && <MerchView onSelectMerch={setSelectedMerch} />}
+        {route === 'merch' && (
+          <MerchView
+            onSelectMerch={setSelectedMerch}
+            onAddToCart={handleAddToCart}
+          />
+        )}
 
         {route === 'library' && (
           <LibraryView
+            authUser={persisted.authUser}
             profile={persisted.profile}
             progress={persisted.progress}
             readHistory={persisted.readHistory}
             favorites={persisted.favorites}
             offlineChapters={persisted.offlineChapters}
             backupPayload={backupPayload}
+            requestedTab={requestedLibraryTab}
+            focusVipInputSignal={focusVipInputSignal}
+            onConsumeRequestedTab={() => setRequestedLibraryTab(null)}
             onOpenChapter={openChapter}
+            onNavigate={(r) => navigate(r)}
             onToggleFavorite={handleToggleFavorite}
             onToggleOffline={handleToggleOffline}
             onDownloadAllOffline={handleDownloadAllOffline}
@@ -427,7 +832,10 @@ export default function App() {
             onImportBackup={handleImportBackup}
             onTriggerNotificationTest={handleTriggerNotificationTest}
             onEnableNotifications={handleEnableNotifications}
-            onOpenVipModal={() => setVipModalOpen(true)}
+            onOpenAuthModal={handleOpenAuthModal}
+            onSignOut={handleSignOut}
+            onOpenVipGuideModal={() => setVipGuideOpen(true)}
+            onRedeemVipCode={handleRedeemVipCode}
             onNotifyToast={showToast}
           />
         )}
@@ -435,14 +843,39 @@ export default function App() {
 
       {route !== 'reader' && <Footer onNavigate={(r) => navigate(r)} />}
 
-      {/* Modals */}
-      <MerchModal item={selectedMerch} onClose={() => setSelectedMerch(null)} />
-      <VipCheckoutModal
-        open={vipModalOpen}
-        defaultName={persisted.profile.displayName}
-        defaultEmail={persisted.profile.email}
-        onClose={() => setVipModalOpen(false)}
-        onActivateVip={handleActivateVip}
+      {/* Modals & Drawers */}
+      <MerchModal
+        item={selectedMerch}
+        onClose={() => setSelectedMerch(null)}
+        onAddToCart={handleAddToCart}
+      />
+      <CartDrawer
+        open={cartOpen}
+        cart={persisted.cart}
+        onClose={() => setCartOpen(false)}
+        onUpdateQuantity={handleUpdateCartQuantity}
+        onRemoveItem={handleRemoveCartItem}
+        onClearCart={handleClearCart}
+        onBrowseMerch={() => navigate('merch')}
+        onNotifyToast={showToast}
+      />
+      <AuthModal
+        open={authModalOpen}
+        reasonMessage={authReason}
+        onClose={() => {
+          setAuthModalOpen(false);
+          setAuthReason(null);
+        }}
+        onEmailLogin={handleEmailLogin}
+        onEmailSignUp={handleEmailSignUp}
+        onGoogleLogin={handleGoogleLogin}
+      />
+      <VipGuideModal
+        open={vipGuideOpen}
+        authUser={persisted.authUser}
+        onClose={() => setVipGuideOpen(false)}
+        onGoToRedeemInput={handleGoToRedeemInputFromGuide}
+        onNotifyToast={showToast}
       />
 
       {/* Toast Notification */}

@@ -1,5 +1,6 @@
 import type {
   AppBackupPayload,
+  CartItem,
   Chapter,
   MerchCategory,
   MerchItem,
@@ -34,6 +35,31 @@ export function calculateReadingTimeMinutes(paragraphs: string[]): number {
     return acc + trimmed.split(/\s+/).length;
   }, 0);
   return Math.max(1, Math.ceil(totalWords / 220));
+}
+
+/**
+ * Tính phần trăm đã đọc (0–100) cho chế độ cuộn dọc (dựa theo vị trí trong phần nội dung chương)
+ * hoặc chế độ lật trang.
+ */
+export function calculateReadingProgressPercent(params: {
+  mode: 'scroll' | 'paged';
+  scrollOffset: number;
+  scrollableDistance: number;
+  pageIndex: number;
+  totalPages: number;
+}): number {
+  if (params.mode === 'paged') {
+    const safeTotal = Math.max(1, params.totalPages);
+    const clampedPage = Math.min(safeTotal - 1, Math.max(0, params.pageIndex));
+    return Math.round(((clampedPage + 1) / safeTotal) * 100);
+  }
+
+  if (params.scrollableDistance <= 0) {
+    return params.scrollOffset > 0 ? 100 : 0;
+  }
+
+  const ratio = params.scrollOffset / params.scrollableDistance;
+  return Math.min(100, Math.max(0, Math.round(ratio * 100)));
 }
 
 /**
@@ -223,8 +249,8 @@ export function getPersonalizedRecommendations(
       }
       const matchReason =
         matchedTags.length > 0
-          ? `Phù hợp vì bạn quan tâm: ${matchedTags.slice(0, 2).join(', ')}`
-          : 'Nổi bật tuần này trong vũ trụ Thạch Uyên';
+          ? `${item.defaultReason} · Khớp gu: ${matchedTags.slice(0, 2).join(', ')}`
+          : item.defaultReason;
       return {
         ...item,
         score,
@@ -233,6 +259,55 @@ export function getPersonalizedRecommendations(
     })
     .sort((a, b) => b.score - a.score || b.weeklyReads - a.weeklyReads)
     .map(({score: _score, ...rest}) => rest);
+}
+
+/**
+ * Chuẩn hóa chuỗi tiếng Việt bỏ dấu để tìm kiếm chương linh hoạt.
+ */
+function normalizeVietnamese(input: string): string {
+  return input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Tìm kiếm chương theo tên chương, số chương hoặc từ khóa (hỗ trợ cả có dấu và không dấu).
+ */
+export function filterChaptersByQuery(chapters: Chapter[], query: string): Chapter[] {
+  const clean = normalizeVietnamese(query);
+  if (!clean) return chapters;
+
+  return chapters.filter((ch) => {
+    const haystack = normalizeVietnamese(
+      `chuong ${ch.number} ${ch.number} ${ch.title} ${ch.tags.join(' ')}`
+    );
+    return haystack.includes(clean);
+  });
+}
+
+/**
+ * Tính tổng số lượng sản phẩm và tổng giá trị VNĐ của giỏ hàng merch.
+ */
+export function calculateCartTotals(
+  cart: CartItem[],
+  merchItems: MerchItem[]
+): {totalQuantity: number; totalPriceVnd: number} {
+  let totalQuantity = 0;
+  let totalPriceVnd = 0;
+
+  for (const entry of cart) {
+    if (entry.quantity <= 0) continue;
+    const product = merchItems.find((m) => m.id === entry.merchId);
+    if (!product || product.status === 'het-hang') continue;
+    totalQuantity += entry.quantity;
+    totalPriceVnd += product.priceVnd * entry.quantity;
+  }
+
+  return {totalQuantity, totalPriceVnd};
 }
 
 /**
@@ -299,3 +374,171 @@ export function getMerchStatusLabel(status: MerchStatus): string {
       return 'Hết hàng';
   }
 }
+
+/**
+ * Kiểm tra xem trạng thái VIP của tài khoản có đang còn hiệu lực hay không.
+ * - isVip = false -> false
+ * - isVip = true và vipExpiresAt == null -> true (VIP Vĩnh viễn)
+ * - isVip = true và vipExpiresAt > now -> true
+ */
+export function isUserVipActive(
+  isVip: boolean,
+  vipExpiresAt?: string | null,
+  now: Date = new Date()
+): boolean {
+  if (!isVip) return false;
+  if (!vipExpiresAt) return true;
+  const expiryTime = Date.parse(vipExpiresAt);
+  if (Number.isNaN(expiryTime)) return true;
+  return expiryTime > now.getTime();
+}
+
+/**
+ * Kiểm tra chương có còn trong giai đoạn VIP đọc trước hay đã đến thời điểm mở miễn phí (public_date).
+ */
+export function isChapterShowingVipLabel(
+  chapter: Pick<Chapter, 'isVipEarlyAccess' | 'publicDate'>,
+  now: Date = new Date()
+): boolean {
+  if (!chapter.isVipEarlyAccess) return false;
+  if (!chapter.publicDate) return true;
+  const publicTime = Date.parse(chapter.publicDate);
+  if (Number.isNaN(publicTime)) return true;
+  return now.getTime() < publicTime;
+}
+
+/**
+ * Kiểm tra chương có đang bị khóa đối với độc giả hiện tại hay không.
+ * Tự động mở khóa nếu: chương không phải VIP, HOẶC now >= public_date, HOẶC user có VIP còn hạn.
+ */
+export function isChapterVipCurrentlyLocked(
+  chapter: Pick<Chapter, 'isVipEarlyAccess' | 'publicDate'>,
+  isVipActive: boolean,
+  now: Date = new Date()
+): boolean {
+  if (!isChapterShowingVipLabel(chapter, now)) return false;
+  return !isVipActive;
+}
+
+/**
+ * Định dạng ngày chuẩn Việt Nam DD/MM/YYYY từ chuỗi ISO timestamp.
+ */
+export function formatViDate(isoDate?: string | null): string {
+  if (!isoDate) return '';
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return '';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+/**
+ * Tạo dòng thông báo đếm ngược ngày tự động mở miễn phí từ `public_date`.
+ */
+export function getPublicUnlockCountdownText(
+  publicDate?: string,
+  fallbackDateLabel?: string,
+  now: Date = new Date()
+): string {
+  if (!publicDate) {
+    return fallbackDateLabel
+      ? `Tự động mở miễn phí vào ngày ${fallbackDateLabel}`
+      : 'Chương đọc trước dành riêng cho Thành viên VIP';
+  }
+  const targetMs = Date.parse(publicDate);
+  if (Number.isNaN(targetMs)) {
+    return fallbackDateLabel
+      ? `Tự động mở miễn phí vào ngày ${fallbackDateLabel}`
+      : 'Chương đọc trước dành riêng cho Thành viên VIP';
+  }
+
+  const diffMs = targetMs - now.getTime();
+  const formattedDate = formatViDate(publicDate) || fallbackDateLabel || '';
+  if (diffMs <= 0) {
+    return `Đã mở miễn phí công khai từ ${formattedDate}`;
+  }
+
+  const totalHours = Math.ceil(diffMs / (1000 * 60 * 60));
+  if (totalHours < 24) {
+    return `Tự động mở miễn phí sau ${Math.max(1, totalHours)} giờ nữa - ${formattedDate}`;
+  }
+  const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  return `Tự động mở miễn phí sau ${days} ngày nữa - ${formattedDate}`;
+}
+
+/**
+ * Định dạng mô tả hạng thành viên & ngày hết hạn cho tab Thành viên VIP.
+ */
+export function formatVipMembershipSummary(
+  isVip: boolean,
+  vipExpiresAt?: string | null,
+  now: Date = new Date()
+): {tierLabel: string; expiryLabel: string; active: boolean} {
+  const active = isUserVipActive(isVip, vipExpiresAt, now);
+  if (!active) {
+    if (isVip && vipExpiresAt) {
+      return {
+        tierLabel: 'Độc giả tiêu chuẩn',
+        expiryLabel: `Gói VIP đã hết hạn ngày ${formatViDate(vipExpiresAt)}`,
+        active: false,
+      };
+    }
+    return {
+      tierLabel: 'Độc giả tiêu chuẩn',
+      expiryLabel: 'Chưa kích hoạt quyền lợi đọc trước VIP',
+      active: false,
+    };
+  }
+
+  if (!vipExpiresAt) {
+    return {
+      tierLabel: 'Thành viên VIP',
+      expiryLabel: 'Hiệu lực: Vĩnh viễn (Ủng hộ tác giả)',
+      active: true,
+    };
+  }
+
+  return {
+    tierLabel: 'Thành viên VIP',
+    expiryLabel: `Hết hạn ngày ${formatViDate(vipExpiresAt)}`,
+    active: true,
+  };
+}
+
+/**
+ * Tạo nội dung chuyển khoản VietQR tự động theo cú pháp:
+ * `VIP [ten-goi] [email hoặc username]` (nếu chưa đăng nhập: `VIP [ten-goi]`).
+ */
+export function buildVipTransferNote(
+  packageCode: string,
+  userIdentifier?: string | null
+): string {
+  const cleanPkg = packageCode.trim().toUpperCase();
+  const cleanUser = (userIdentifier || '')
+    .trim()
+    .replace(/\s+/g, '');
+  if (!cleanUser) {
+    return `VIP ${cleanPkg}`;
+  }
+  return `VIP ${cleanPkg} ${cleanUser}`;
+}
+
+/**
+ * Tạo đường dẫn ảnh QR động theo chuẩn VietQR Quick Link.
+ */
+export function buildVietQrUrl(params: {
+  bankCode: string;
+  accountNumber: string;
+  accountName: string;
+  amount: number;
+  transferNote: string;
+}): string {
+  const safeBank = encodeURIComponent(params.bankCode.trim());
+  const safeAcc = encodeURIComponent(params.accountNumber.trim());
+  const safeAmount = Math.max(0, Math.round(params.amount));
+  const addInfo = encodeURIComponent(params.transferNote.trim());
+  const accountName = encodeURIComponent(params.accountName.trim());
+  return `https://img.vietqr.io/image/${safeBank}-${safeAcc}-qr_only.png?amount=${safeAmount}&addInfo=${addInfo}&accountName=${accountName}`;
+}
+
