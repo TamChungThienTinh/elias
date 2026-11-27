@@ -1,4 +1,5 @@
 import {INITIAL_COMMENTS} from '../data/chapters';
+import {clearOfflineContentCache} from '../services/offlineService';
 import type {
   AppBackupPayload,
   AuthUser,
@@ -9,6 +10,7 @@ import type {
   ReaderSettings,
   ReadingProgress,
 } from '../types';
+import {isUserVipActive} from './readerLogic';
 
 const STORAGE_KEY = 'huyet_nguyet_co_do_state_v1';
 
@@ -62,19 +64,33 @@ export function loadPersistedState(): PersistedState {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw) as Partial<PersistedState>;
+    const mergedProfile: ReaderProfile = {
+      ...DEFAULT_PROFILE,
+      ...(parsed.profile ?? {}),
+    };
+    const vipValid = isUserVipActive(
+      mergedProfile.isVip,
+      mergedProfile.vipExpiresAt
+    );
+
+    if (!vipValid) {
+      clearOfflineContentCache();
+    }
+
     return {
       authUser: parsed.authUser ?? null,
       usedMockVipCodes: Array.isArray(parsed.usedMockVipCodes)
         ? parsed.usedMockVipCodes
         : [],
-      profile: {...DEFAULT_PROFILE, ...(parsed.profile ?? {})},
+      profile: mergedProfile,
       settings: {...DEFAULT_SETTINGS, ...(parsed.settings ?? {})},
       progress: parsed.progress ?? null,
       readHistory: Array.isArray(parsed.readHistory) ? parsed.readHistory : [],
       favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
-      offlineChapters: Array.isArray(parsed.offlineChapters)
-        ? parsed.offlineChapters
-        : [],
+      offlineChapters:
+        vipValid && Array.isArray(parsed.offlineChapters)
+          ? parsed.offlineChapters
+          : [],
       comments: Array.isArray(parsed.comments)
         ? parsed.comments
         : INITIAL_COMMENTS,

@@ -7,7 +7,7 @@ import type {MerchItem} from '../types';
  *
  * 1. THAY ẢNH SẢN PHẨM:
  *    - Chép ảnh chụp sản phẩm hoặc tranh vẽ merch vào `src/assets/images/`.
- *    - Đổi trường `image` thành `./src/assets/images/ten-anh-cua-ban.jpg`.
+ *    - Đổi trường `image` thành `/src/assets/images/ten-anh-cua-ban.jpg`.
  *
  * 2. CẬP NHẬT TRẠNG THÁI HÀNG:
  *    - 'con-hang'  -> hiển thị nhãn "Còn hàng"
@@ -30,7 +30,7 @@ export const MERCH_ITEMS: MerchItem[] = [
     status: 'con-hang',
     featured: true,
     // >>> THAY ĐƯỜNG DẪN ẢNH SẢN PHẨM TẠI ĐÂY <<<
-    image: './src/assets/images/merch_acrylic_standee_clean_1795760123504.jpg',
+    image: '/src/assets/images/merch_acrylic_standee_clean_1795760123504.jpg',
     dimensions: 'Cao 16 cm × Rộng 11 cm · Đế tròn dày 5 mm',
     material: 'Acrylic trong suốt 2 mặt chống xước, đế đen khắc hoa văn trăng khuyết vàng đồng',
     releaseNote: 'Đợt in đầu tiên — tặng kèm thẻ nhân vật ép kim',
@@ -50,7 +50,7 @@ export const MERCH_ITEMS: MerchItem[] = [
     priceVnd: 320000,
     status: 'con-hang',
     featured: true,
-    image: './src/assets/images/merch_art_print_1795755469687.jpg',
+    image: '/src/assets/images/merch_art_print_1795755469687.jpg',
     dimensions: 'Khổ A3 (29.7 × 42 cm) kèm khung nhôm đen nhám',
     material: 'Giấy mỹ thuật Cotton 300gsm in Giclée bền màu',
     releaseNote: 'Kèm chữ ký tay tác giả ở góc dưới bức tranh',
@@ -70,7 +70,7 @@ export const MERCH_ITEMS: MerchItem[] = [
     priceVnd: 125000,
     status: 'pre-order',
     featured: true,
-    image: './src/assets/images/merch_enamel_keychain_1795755469930.jpg',
+    image: '/src/assets/images/merch_enamel_keychain_1795755469930.jpg',
     dimensions: 'Dài 5.8 cm × Rộng 4.5 cm (không tính khoen móc)',
     material: 'Hợp kim đúc mạ đồng cổ, tráng men xanh đêm thủ công',
     releaseNote: 'Dự kiến giao hàng đợt Pre-order sau 14 ngày chốt đơn',
@@ -90,7 +90,7 @@ export const MERCH_ITEMS: MerchItem[] = [
     priceVnd: 490000,
     status: 'pre-order',
     featured: false,
-    image: './src/assets/images/merch_hardcover_artbook_1795755469745.jpg',
+    image: '/src/assets/images/merch_hardcover_artbook_1795755469745.jpg',
     dimensions: 'Khổ 19 × 26 cm · 128 trang màu',
     material: 'Bìa vải linen đen ép kim vàng đồng, dây ruy-băng lụa xanh đêm',
     releaseNote: 'Tặng kèm 2 postcard minh họa độc quyền khi đặt trước',
@@ -109,7 +109,7 @@ export const MERCH_ITEMS: MerchItem[] = [
     priceVnd: 145000,
     status: 'con-hang',
     featured: false,
-    image: './src/assets/images/novel_cover_huyet_nguyet_1795755469511.jpg',
+    image: '/src/assets/images/novel_cover_huyet_nguyet_1795755469511.jpg',
     dimensions: 'Khổ A3 (29.7 × 42 cm) · Đóng ống cứng chống gập',
     material: 'Giấy Couche mờ 250gsm cán màng chống lóa',
     releaseNote: 'Sẵn hàng giao ngay toàn quốc',
@@ -128,7 +128,7 @@ export const MERCH_ITEMS: MerchItem[] = [
     priceVnd: 390000,
     status: 'het-hang',
     featured: false,
-    image: './src/assets/images/hero_blood_moon_citadel_1795755470351.jpg',
+    image: '/src/assets/images/hero_blood_moon_citadel_1795755470351.jpg',
     dimensions: 'Ngang 90 cm × Cao 50 cm · Kèm thanh treo gỗ đen',
     material: 'Vải canvas dệt mịn phủ chống bụi',
     releaseNote: 'Đã bán hết đợt 1 — dự kiến mở lại vào Arc 3',

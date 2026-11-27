@@ -9,6 +9,7 @@ import {
   X,
 } from 'lucide-react';
 import type {AuthUser, ViewRoute} from '../types';
+import {buildRoutePath} from '../utils/routing';
 
 interface HeaderProps {
   currentRoute: ViewRoute;
@@ -80,8 +81,11 @@ export function Header({
       <div className="max-w-6xl mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-4 sm:gap-8">
         {/* Zone 1: Single-line display wordmark */}
         <a
-          href="#/"
+          href="/"
           onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+              return;
+            }
             e.preventDefault();
             handleNav('home');
           }}
@@ -99,11 +103,15 @@ export function Header({
             const active =
               currentRoute === item.route ||
               (currentRoute === 'reader' && item.route === 'catalog');
+            const href = buildRoutePath(item.route);
             return (
               <a
                 key={item.route}
-                href={`#/${item.route === 'home' ? '' : item.route}`}
+                href={href}
                 onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+                    return;
+                  }
                   e.preventDefault();
                   handleNav(item.route);
                 }}

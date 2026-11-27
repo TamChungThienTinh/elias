@@ -7,10 +7,17 @@ import {
   redeemVipCodeService,
   syncLibraryToSupabase,
 } from './services/vipService';
+import {
+  clearOfflineContentCache,
+  downloadChapterForOffline,
+  hasCachedOfflineContent,
+  removeOfflineChapterFromCache,
+} from './services/offlineService';
 import type {
   AppBackupPayload,
   AuthUser,
   MerchItem,
+  OfflineChapterRecord,
   ReaderProfile,
   ReaderSettings,
   ViewRoute,
@@ -18,9 +25,10 @@ import type {
 } from './types';
 import {
   calculateCartTotals,
-  estimateChapterSizeKb,
+  canUseOfflineDownload,
   isChapterVipCurrentlyLocked,
   isUserVipActive,
+  shouldPurgeOfflineStorage,
 } from './utils/readerLogic';
 import {
   createBackupPayload,
@@ -39,26 +47,16 @@ import {MerchModal} from './components/MerchModal';
 import {CartDrawer} from './components/CartDrawer';
 import {AuthModal} from './components/AuthModal';
 import {VipGuideModal} from './components/VipGuideModal';
-
-function parseHashRoute(): {route: ViewRoute; chapterId?: string} {
-  const hash = window.location.hash.replace(/^#\/?/, '');
-  if (hash.startsWith('doc/')) {
-    const id = hash.slice(4);
-    if (CHAPTERS.some((c) => c.id === id)) {
-      return {route: 'reader', chapterId: id};
-    }
-  }
-  if (hash === 'muc-luc' || hash === 'catalog') return {route: 'catalog'};
-  if (hash === 'cua-hang' || hash === 'merch') return {route: 'merch'};
-  if (hash === 'thu-vien' || hash === 'library') return {route: 'library'};
-  return {route: 'home'};
-}
+import {VipOfflineGateModal} from './components/VipOfflineGateModal';
+import {buildRoutePath, parsePathnameRoute} from './utils/routing';
 
 export default function App() {
   const [persisted, setPersisted] = useState<PersistedState>(() =>
     loadPersistedState()
   );
-  const initialRoute = parseHashRoute();
+  const [initialRoute] = useState(() =>
+    parsePathnameRoute(window.location.pathname, window.location.hash)
+  );
   const [route, setRoute] = useState<ViewRoute>(initialRoute.route);
   const [activeChapterId, setActiveChapterId] = useState<string>(
     initialRoute.chapterId ||
@@ -68,6 +66,7 @@ export default function App() {
   const [selectedMerch, setSelectedMerch] = useState<MerchItem | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [vipGuideOpen, setVipGuideOpen] = useState(false);
+  const [offlineGateOpen, setOfflineGateOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authReason, setAuthReason] = useState<string | null>(null);
   const [requestedLibraryTab, setRequestedLibraryTab] =
@@ -84,6 +83,11 @@ export default function App() {
     const timer = window.setTimeout(() => setToastMessage(null), 3400);
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
+
+  // Đảm bảo tiêu đề tab trình duyệt luôn là "Huyết Án Đa Diện"
+  useEffect(() => {
+    document.title = 'Huyết Án Đa Diện';
+  }, [route, activeChapterId]);
 
   // Đồng bộ lưu trạng thái vào localStorage
   useEffect(() => {
@@ -108,9 +112,11 @@ export default function App() {
       } | null
     ) => {
       if (!sessionUser) {
+        clearOfflineContentCache();
         setPersisted((prev) => ({
           ...prev,
           authUser: null,
+          offlineChapters: [],
           profile: {
             ...prev.profile,
             isVip: false,
@@ -140,6 +146,14 @@ export default function App() {
           sessionUser.app_metadata?.provider === 'google' ? 'google' : 'email',
       };
 
+      const cloudVipValid = isUserVipActive(
+        Boolean(cloudProfile?.is_vip),
+        cloudProfile?.vip_expires_at ?? null
+      );
+      if (!cloudVipValid) {
+        clearOfflineContentCache();
+      }
+
       setPersisted((prev) => {
         const mergedHistory = Array.from(
           new Set([...(cloudProfile?.read_history || []), ...prev.readHistory])
@@ -153,6 +167,7 @@ export default function App() {
           authUser,
           readHistory: mergedHistory,
           favorites: mergedFavorites,
+          offlineChapters: cloudVipValid ? prev.offlineChapters : [],
           profile: {
             ...prev.profile,
             displayName,
@@ -197,32 +212,42 @@ export default function App() {
     persisted.favorites,
   ]);
 
-  // Đồng bộ hash URL cho nút Back/Forward của trình duyệt (an toàn với GitHub Pages base './')
+  // Đồng bộ History API sạch (/muc-luc, /thu-vien, /chuong/1) cho nút Back/Forward
   useEffect(() => {
-    const onHashChange = () => {
-      const next = parseHashRoute();
+    if (initialRoute.shouldReplaceCleanPath) {
+      window.history.replaceState(
+        {route: initialRoute.route, chapterId: initialRoute.chapterId},
+        '',
+        initialRoute.shouldReplaceCleanPath
+      );
+    }
+
+    const onPopState = () => {
+      const next = parsePathnameRoute(
+        window.location.pathname,
+        window.location.hash
+      );
       setRoute(next.route);
       if (next.chapterId) {
         setActiveChapterId(next.chapterId);
       }
     };
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [initialRoute]);
 
   const navigate = useCallback((nextRoute: ViewRoute, chapterId?: string) => {
     setRoute(nextRoute);
     if (nextRoute === 'reader' && chapterId) {
       setActiveChapterId(chapterId);
-      window.location.hash = `#/doc/${chapterId}`;
-    } else if (nextRoute === 'catalog') {
-      window.location.hash = '#/muc-luc';
-    } else if (nextRoute === 'merch') {
-      window.location.hash = '#/cua-hang';
-    } else if (nextRoute === 'library') {
-      window.location.hash = '#/thu-vien';
-    } else {
-      window.location.hash = '#/';
+    }
+    const nextPath = buildRoutePath(nextRoute, chapterId);
+    if (window.location.pathname !== nextPath || window.location.hash !== '') {
+      window.history.pushState(
+        {route: nextRoute, chapterId},
+        '',
+        nextPath
+      );
     }
     window.scrollTo({top: 0, behavior: 'auto'});
   }, []);
@@ -395,16 +420,18 @@ export default function App() {
     if (isSupabaseConfigured && supabase) {
       await supabase.auth.signOut();
     }
+    clearOfflineContentCache();
     setPersisted((prev) => ({
       ...prev,
       authUser: null,
+      offlineChapters: [],
       profile: {
         ...prev.profile,
         isVip: false,
         vipExpiresAt: null,
       },
     }));
-    showToast('Đã đăng xuất khỏi tài khoản.');
+    showToast('Đã đăng xuất và tự động dọn bộ nhớ chương ngoại tuyến.');
   }, [showToast]);
 
   const handleRedeemVipCode = useCallback(
@@ -543,47 +570,103 @@ export default function App() {
   );
 
   const handleToggleOffline = useCallback(
-    (chapterId: string) => {
+    async (chapterId: string) => {
+      // Kiểm tra bắt buộc quyền VIP còn hạn ở tầng dữ liệu trước khi gọi tải nội dung
+      if (
+        !canUseOfflineDownload(
+          persisted.profile.isVip,
+          persisted.profile.vipExpiresAt
+        )
+      ) {
+        setOfflineGateOpen(true);
+        return;
+      }
+
       const exists = persisted.offlineChapters.some(
         (r) => r.chapterId === chapterId
       );
       const chapter = CHAPTERS.find((c) => c.id === chapterId);
       if (!chapter) return;
 
+      if (exists) {
+        removeOfflineChapterFromCache(chapterId);
+        setPersisted((prev) => ({
+          ...prev,
+          offlineChapters: prev.offlineChapters.filter(
+            (r) => r.chapterId !== chapterId
+          ),
+        }));
+        showToast(`Đã xóa Chương ${chapter.number} khỏi bộ nhớ ngoại tuyến.`);
+        return;
+      }
+
+      const downloaded = await downloadChapterForOffline({
+        chapter,
+        isVip: persisted.profile.isVip,
+        vipExpiresAt: persisted.profile.vipExpiresAt,
+      });
+
+      if (!downloaded.allowed) {
+        setOfflineGateOpen(true);
+        return;
+      }
+
       setPersisted((prev) => ({
         ...prev,
-        offlineChapters: exists
-          ? prev.offlineChapters.filter((r) => r.chapterId !== chapterId)
-          : [
-              {
-                chapterId,
-                savedAt: new Date().toLocaleDateString('vi-VN'),
-                sizeKb: estimateChapterSizeKb(chapter),
-              },
-              ...prev.offlineChapters,
-            ],
+        offlineChapters: [
+          {
+            chapterId: downloaded.record.chapterId,
+            savedAt: downloaded.record.savedAt,
+            sizeKb: downloaded.record.sizeKb,
+          },
+          ...prev.offlineChapters.filter((r) => r.chapterId !== chapterId),
+        ],
       }));
-      showToast(
-        exists
-          ? `Đã xóa Chương ${chapter.number} khỏi bộ nhớ ngoại tuyến.`
-          : `Đã tải Chương ${chapter.number} để đọc ngoại tuyến.`
-      );
+      showToast(`Đã tải Chương ${chapter.number} để đọc ngoại tuyến.`);
     },
-    [persisted.offlineChapters, showToast]
+    [
+      persisted.offlineChapters,
+      persisted.profile.isVip,
+      persisted.profile.vipExpiresAt,
+      showToast,
+    ]
   );
 
-  const handleDownloadAllOffline = useCallback(() => {
-    const today = new Date().toLocaleDateString('vi-VN');
+  const handleDownloadAllOffline = useCallback(async () => {
+    if (
+      !canUseOfflineDownload(
+        persisted.profile.isVip,
+        persisted.profile.vipExpiresAt
+      )
+    ) {
+      setOfflineGateOpen(true);
+      return;
+    }
+
+    const records: OfflineChapterRecord[] = [];
+    for (const ch of CHAPTERS) {
+      const downloaded = await downloadChapterForOffline({
+        chapter: ch,
+        isVip: persisted.profile.isVip,
+        vipExpiresAt: persisted.profile.vipExpiresAt,
+      });
+      if (!downloaded.allowed) {
+        setOfflineGateOpen(true);
+        return;
+      }
+      records.push({
+        chapterId: downloaded.record.chapterId,
+        savedAt: downloaded.record.savedAt,
+        sizeKb: downloaded.record.sizeKb,
+      });
+    }
+
     setPersisted((prev) => ({
       ...prev,
-      offlineChapters: CHAPTERS.map((ch) => ({
-        chapterId: ch.id,
-        savedAt: today,
-        sizeKb: estimateChapterSizeKb(ch),
-      })),
+      offlineChapters: records,
     }));
-    showToast(`Đã lưu toàn bộ ${CHAPTERS.length} chương để đọc ngoại tuyến.`);
-  }, [showToast]);
+    showToast(`Đã lưu toàn bộ ${records.length} chương để đọc ngoại tuyến.`);
+  }, [persisted.profile.isVip, persisted.profile.vipExpiresAt, showToast]);
 
   const handleUpdateProfile = useCallback((patch: Partial<ReaderProfile>) => {
     setPersisted((prev) => ({
@@ -598,6 +681,13 @@ export default function App() {
 
   const handleImportBackup = useCallback(
     (payload: AppBackupPayload) => {
+      const importedVipValid = isUserVipActive(
+        payload.profile.isVip,
+        payload.profile.vipExpiresAt
+      );
+      if (!importedVipValid) {
+        clearOfflineContentCache();
+      }
       setPersisted((prev) => ({
         ...prev,
         profile: payload.profile,
@@ -605,7 +695,7 @@ export default function App() {
         progress: payload.progress,
         readHistory: payload.readHistory,
         favorites: payload.favorites,
-        offlineChapters: payload.offlineChapters,
+        offlineChapters: importedVipValid ? payload.offlineChapters : [],
         comments: payload.comments.length > 0 ? payload.comments : prev.comments,
       }));
       showToast('Đã khôi phục toàn bộ thư viện và tiến độ đọc thành công.');
@@ -670,7 +760,7 @@ export default function App() {
 
   const handleTriggerNotificationTest = useCallback(() => {
     const latest = CHAPTERS[CHAPTERS.length - 1];
-    const title = 'Huyết Nguyệt Cố Đô — Chương mới đã phát hành';
+    const title = 'Huyết Án Đa Diện — Chương mới đã phát hành';
     const body = `Chương ${latest.number}: ${latest.title}`;
 
     if (
@@ -698,6 +788,45 @@ export default function App() {
     [persisted.profile.isVip, persisted.profile.vipExpiresAt]
   );
 
+  // Tự động dọn bộ nhớ ngoại tuyến ngay lập tức khi gói VIP hết hạn hoặc tài khoản không còn quyền VIP
+  useEffect(() => {
+    const enforceOfflineEntitlement = () => {
+      const needsPurge =
+        shouldPurgeOfflineStorage(
+          persisted.profile.isVip,
+          persisted.profile.vipExpiresAt,
+          persisted.offlineChapters.length
+        ) ||
+        (!isUserVipActive(
+          persisted.profile.isVip,
+          persisted.profile.vipExpiresAt
+        ) &&
+          hasCachedOfflineContent());
+
+      if (needsPurge) {
+        clearOfflineContentCache();
+        if (persisted.offlineChapters.length > 0) {
+          setPersisted((prev) => ({
+            ...prev,
+            offlineChapters: [],
+          }));
+        }
+      }
+    };
+
+    enforceOfflineEntitlement();
+    const interval = window.setInterval(enforceOfflineEntitlement, 60_000);
+    window.addEventListener('visibilitychange', enforceOfflineEntitlement);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('visibilitychange', enforceOfflineEntitlement);
+    };
+  }, [
+    persisted.profile.isVip,
+    persisted.profile.vipExpiresAt,
+    persisted.offlineChapters.length,
+  ]);
+
   const handleOpenVipTab = useCallback(() => {
     setRequestedLibraryTab('vip');
     navigate('library');
@@ -705,6 +834,7 @@ export default function App() {
 
   const handleGoToRedeemInputFromGuide = useCallback(() => {
     setVipGuideOpen(false);
+    setOfflineGateOpen(false);
     if (
       route === 'reader' &&
       isChapterVipCurrentlyLocked(activeChapter, isVipActive)
@@ -764,12 +894,14 @@ export default function App() {
             progress={persisted.progress}
             readHistory={persisted.readHistory}
             favorites={persisted.favorites}
-            offlineChapters={persisted.offlineChapters}
+            offlineChapters={isVipActive ? persisted.offlineChapters : []}
             isVip={isVipActive}
             onOpenChapter={openChapter}
             onToggleFavorite={handleToggleFavorite}
             onToggleOffline={handleToggleOffline}
             onDownloadAllOffline={handleDownloadAllOffline}
+            onOpenVipActivation={handleGoToRedeemInputFromGuide}
+            onOpenVipGuide={() => setVipGuideOpen(true)}
           />
         )}
 
@@ -780,9 +912,12 @@ export default function App() {
             progress={persisted.progress}
             authUser={persisted.authUser}
             isFavorite={persisted.favorites.includes(activeChapter.id)}
-            isOfflineSaved={persisted.offlineChapters.some(
-              (r) => r.chapterId === activeChapter.id
-            )}
+            isOfflineSaved={
+              isVipActive &&
+              persisted.offlineChapters.some(
+                (r) => r.chapterId === activeChapter.id
+              )
+            }
             isVip={isVipActive}
             focusVipInputSignal={focusVipInputSignal}
             defaultAuthorName={
@@ -876,6 +1011,15 @@ export default function App() {
         onClose={() => setVipGuideOpen(false)}
         onGoToRedeemInput={handleGoToRedeemInputFromGuide}
         onNotifyToast={showToast}
+      />
+      <VipOfflineGateModal
+        open={offlineGateOpen}
+        onClose={() => setOfflineGateOpen(false)}
+        onActivateCode={handleGoToRedeemInputFromGuide}
+        onOpenVipGuide={() => {
+          setOfflineGateOpen(false);
+          setVipGuideOpen(true);
+        }}
       />
 
       {/* Toast Notification */}

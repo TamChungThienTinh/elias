@@ -16,7 +16,7 @@ import type {
  *    - Chép file tranh vẽ của bạn vào thư mục `src/assets/images/`
  *      (ví dụ: `src/assets/images/bia-truyen-moi.jpg`).
  *    - Đổi đường dẫn `coverImage` và `bannerImage` bên dưới thành:
- *      `./src/assets/images/bia-truyen-moi.jpg` (nhớ giữ `./` ở đầu để tương thích GitHub Pages).
+ *      `/src/assets/images/bia-truyen-moi.jpg` (bắt đầu bằng `/` để hiển thị đúng ở mọi đường dẫn con).
  *
  * 2. THÊM ARC MỚI:
  *    - Thêm một phần tử mới vào mảng `ARCS` (ví dụ: id: 'arc-3', number: 3, title: '...').
@@ -38,9 +38,9 @@ export const NOVEL_INFO: NovelInfo = {
   statusText: 'Đang ra chương mới',
   updateSchedule: 'Cập nhật Thứ Tư & Chủ Nhật hàng tuần',
   // >>> THAY ĐƯỜNG DẪN ẢNH BÌA TRUYỆN TẠI ĐÂY <<<
-  coverImage: './src/assets/images/novel_cover_huyet_nguyet_1795755469511.jpg',
+  coverImage: '/src/assets/images/novel_cover_huyet_nguyet_1795755469511.jpg',
   // >>> THAY ĐƯỜNG DẪN ẢNH BANNER TRANG CHỦ TẠI ĐÂY <<<
-  bannerImage: './src/assets/images/hero_blood_moon_citadel_1795755470351.jpg',
+  bannerImage: '/src/assets/images/hero_blood_moon_citadel_1795755470351.jpg',
   tagline: 'Khi nhật thực phủ kín thành quách cổ, chỉ ngọn đèn đồng của kẻ gác đêm còn giữ lại ký ức của người sống.',
   synopsis: [
     'Mười hai năm sau đêm Nhật Thực Đen nhấn chìm kinh thành Thạch Uyên vào màn sương xám, vương triều xưa chỉ còn là những tháp đá câm lặng và lời thì thầm của tàn tro. Kẻ nào bước qua cổng thành khi chuông đồng điểm canh ba đều bị sương mù xóa mất tên tuổi.',
@@ -86,7 +86,7 @@ export const CHAPTERS: Chapter[] = [
     likes: 1246,
     tags: ['Khởi đầu', 'Cố đô', 'Kỳ ảo'],
     // Ảnh minh họa tùy chọn cho chương (có thể xóa dòng này nếu chương không có tranh)
-    illustration: './src/assets/images/novel_cover_huyet_nguyet_1795755469511.jpg',
+    illustration: '/src/assets/images/novel_cover_huyet_nguyet_1795755469511.jpg',
     illustrationCaption: 'Minh họa Chương 1 — Người gác đèn đứng trước Cổng Sương Cố Đô.',
     authorNote: 'Cảm ơn độc giả đã đồng hành cùng chương mở đầu của Huyết Nguyệt Cố Đô. Hãy thử chuyển sang chế độ Giấy vàng hoặc Lật trang để trải nghiệm đọc thoải mái nhất.',
     paragraphs: [
@@ -111,7 +111,7 @@ export const CHAPTERS: Chapter[] = [
     views: 12390,
     likes: 1094,
     tags: ['Tháp chuông', 'Bí ẩn', 'Hành động'],
-    illustration: './src/assets/images/hero_blood_moon_citadel_1795755470351.jpg',
+    illustration: '/src/assets/images/hero_blood_moon_citadel_1795755470351.jpg',
     illustrationCaption: 'Minh họa Chương 2 — Cây cầu đá dẫn lên Tháp Nhật Thực giữa màn sương.',
     authorNote: 'Chương 2 mở ra bối cảnh bên trong cầu đá Thạch Uyên. Đừng quên để lại bình luận dự đoán danh tính người gõ chuông nhé!',
     paragraphs: [
@@ -181,7 +181,7 @@ export const RECOMMENDED_SERIES: RecommendedStory[] = [
     blurb: 'Đêm cuối cùng trước khi cổng Thạch Uyên đóng lại và lời thề của bảy kỵ sĩ khiên đầu sói.',
     defaultReason: 'Nên đọc sau Arc 1',
     linkedChapterId: 'arc-1-chuong-2',
-    coverImage: './src/assets/images/hero_blood_moon_citadel_1795755470351.jpg',
+    coverImage: '/src/assets/images/hero_blood_moon_citadel_1795755470351.jpg',
   },
   {
     id: 'series-hoi-luu-tru',
@@ -194,7 +194,7 @@ export const RECOMMENDED_SERIES: RecommendedStory[] = [
     blurb: 'Những bản đồ hầm mộ, ký tự cổ và ghi chép mật được Tô Vãn mang theo vào Tháp Nhật Thực.',
     defaultReason: 'Bổ sung bối cảnh thế giới',
     linkedChapterId: 'arc-2-chuong-3',
-    coverImage: './src/assets/images/merch_hardcover_artbook_1795755469745.jpg',
+    coverImage: '/src/assets/images/merch_hardcover_artbook_1795755469745.jpg',
   },
   {
     id: 'series-bien-ban-nhat-thuc',
@@ -207,7 +207,7 @@ export const RECOMMENDED_SERIES: RecommendedStory[] = [
     blurb: 'Bức thư cuối cùng vị sư phụ để lại cho Trần Khắc trước khi ngọn đèn đồng đầu tiên được thắp lên.',
     defaultReason: 'Giải mã nguồn gốc chiếc đèn đồng',
     linkedChapterId: 'arc-1-chuong-1',
-    coverImage: './src/assets/images/merch_art_print_1795755469687.jpg',
+    coverImage: '/src/assets/images/merch_art_print_1795755469687.jpg',
   },
 ];
 

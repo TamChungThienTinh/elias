@@ -26,15 +26,99 @@ export function formatCount(count: number): string {
 }
 
 /**
- * Ước tính thời gian đọc (phút) dựa trên tốc độ đọc tiếng Việt ~220 từ/phút.
+ * Tốc độ đọc trung bình tiếng Việt (~220 từ/phút cho tiểu thuyết).
  */
-export function calculateReadingTimeMinutes(paragraphs: string[]): number {
-  const totalWords = paragraphs.reduce((acc, p) => {
+export const AVERAGE_READING_WORDS_PER_MINUTE = 220;
+
+/**
+ * Đếm chính xác số từ trong các đoạn văn (loại bỏ ký tự dấu câu đứng riêng lẻ như "—").
+ */
+export function countParagraphWords(paragraphs: string[]): number {
+  return paragraphs.reduce((acc, p) => {
     const trimmed = p.trim();
     if (!trimmed) return acc;
-    return acc + trimmed.split(/\s+/).length;
+    const tokens = trimmed
+      .split(/\s+/)
+      .filter((token) => /[\p{L}\p{N}]/u.test(token));
+    return acc + tokens.length;
   }, 0);
-  return Math.max(1, Math.ceil(totalWords / 220));
+}
+
+/**
+ * Ước tính thời gian đọc (phút) dựa trên tốc độ đọc tiếng Việt ~220 từ/phút.
+ */
+export function calculateReadingTimeMinutes(
+  paragraphs: string[],
+  wordsPerMinute = AVERAGE_READING_WORDS_PER_MINUTE
+): number {
+  const totalWords = countParagraphWords(paragraphs);
+  const safeWpm = Math.max(60, wordsPerMinute);
+  return Math.max(1, Math.ceil(totalWords / safeWpm));
+}
+
+/**
+ * Trả về số từ thực tế của nội dung chương, thời gian đọc (phút) và nhãn định dạng "X phút đọc".
+ */
+export function getChapterReadingStats(
+  paragraphs: string[],
+  wordsPerMinute = AVERAGE_READING_WORDS_PER_MINUTE
+): {wordCount: number; minutes: number; label: string} {
+  const wordCount = countParagraphWords(paragraphs);
+  const minutes = calculateReadingTimeMinutes(paragraphs, wordsPerMinute);
+  return {
+    wordCount,
+    minutes,
+    label: `${minutes} phút đọc`,
+  };
+}
+
+/**
+ * Tạo bảng tra cứu số từ thực tế và thời gian đọc cho danh sách chương (tối ưu memo hóa ở Mục lục).
+ */
+export function buildChapterReadingStatsMap(
+  chapters: Array<Pick<Chapter, 'id' | 'paragraphs'>>,
+  wordsPerMinute = AVERAGE_READING_WORDS_PER_MINUTE
+): Record<string, {wordCount: number; minutes: number; label: string}> {
+  const map: Record<string, {wordCount: number; minutes: number; label: string}> = {};
+  for (const ch of chapters) {
+    map[ch.id] = getChapterReadingStats(ch.paragraphs, wordsPerMinute);
+  }
+  return map;
+}
+
+/**
+ * Tính tổng thời gian đọc (phút) dựa trên tổng số từ thực tế của danh sách chương.
+ */
+export function calculateTotalReadingMinutes(
+  chapters: Array<Pick<Chapter, 'paragraphs'>>,
+  wordsPerMinute = AVERAGE_READING_WORDS_PER_MINUTE
+): number {
+  return chapters.reduce(
+    (sum, ch) => sum + calculateReadingTimeMinutes(ch.paragraphs, wordsPerMinute),
+    0
+  );
+}
+
+/**
+ * Tính số phút đọc còn lại dựa trên số từ thực tế của chương và phần trăm vị trí cuộn hiện tại.
+ */
+export function calculateRemainingReadingTime(
+  wordCount: number,
+  progressPercent: number,
+  wordsPerMinute = AVERAGE_READING_WORDS_PER_MINUTE
+): {remainingMinutes: number; label: string} {
+  const clampedProgress = Math.min(100, Math.max(0, progressPercent));
+  if (clampedProgress >= 98) {
+    return {remainingMinutes: 0, label: 'Đã đọc xong'};
+  }
+  const safeWords = Math.max(0, wordCount);
+  const safeWpm = Math.max(60, wordsPerMinute);
+  const remainingWords = safeWords * ((100 - clampedProgress) / 100);
+  const remainingMinutes = Math.max(1, Math.ceil(remainingWords / safeWpm));
+  return {
+    remainingMinutes,
+    label: `Còn ${remainingMinutes} phút đọc`,
+  };
 }
 
 /**
@@ -541,4 +625,30 @@ export function buildVietQrUrl(params: {
   const accountName = encodeURIComponent(params.accountName.trim());
   return `https://img.vietqr.io/image/${safeBank}-${safeAcc}-qr_only.png?amount=${safeAmount}&addInfo=${addInfo}&accountName=${accountName}`;
 }
+
+/**
+ * Kiểm tra quyền sử dụng tính năng tải đọc ngoại tuyến ở tầng dữ liệu:
+ * Bắt buộc `isVip === true` và `vipExpiresAt` chưa hết hạn (hoặc null với VIP vĩnh viễn).
+ */
+export function canUseOfflineDownload(
+  isVip: boolean,
+  vipExpiresAt?: string | null,
+  now: Date = new Date()
+): boolean {
+  return isUserVipActive(isVip, vipExpiresAt, now);
+}
+
+/**
+ * Xác định khi nào cần tự động dọn bộ nhớ ngoại tuyến (khi không còn quyền VIP mà vẫn còn dữ liệu lưu).
+ */
+export function shouldPurgeOfflineStorage(
+  isVip: boolean,
+  vipExpiresAt: string | null | undefined,
+  offlineRecordCount: number,
+  now: Date = new Date()
+): boolean {
+  if (offlineRecordCount <= 0) return false;
+  return !isUserVipActive(isVip, vipExpiresAt, now);
+}
+
 

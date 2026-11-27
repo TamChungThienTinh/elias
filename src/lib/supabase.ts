@@ -6,7 +6,12 @@ import {createClient, type SupabaseClient} from '@supabase/supabase-js';
  * - Nếu chưa cấu hình biến môi trường, ứng dụng tự động chạy chế độ Mock Mode cục bộ
  *   để tác giả và độc giả vẫn có thể trải nghiệm đầy đủ giao diện.
  */
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
+const rawSupabaseUrl = (
+  import.meta.env.VITE_SUPABASE_URL as string | undefined
+)?.trim();
+const supabaseUrl = rawSupabaseUrl
+  ? rawSupabaseUrl.replace(/\/+(rest|auth)\/v1\/?$/i, '').replace(/\/+$/, '')
+  : undefined;
 const supabaseAnonKey = (
   import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 )?.trim();

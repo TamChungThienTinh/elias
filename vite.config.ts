@@ -6,13 +6,13 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    // Cấu hình đường dẫn tương đối để tương thích hoàn toàn với GitHub Pages
-    base: './',
+    // Cấu hình đường dẫn gốc '/' cho tên miền riêng / Vercel với History API
+    base: '/',
     plugins: [
       react(),
       tailwindcss(),
       // Tự động sao chép thư mục src/assets vào dist/src/assets khi build
-      // để ảnh minh họa và ảnh merch hiển thị chính xác trên GitHub Pages.
+      // để ảnh minh họa và ảnh merch hiển thị chính xác ở mọi đường dẫn con.
       {
         name: 'copy-unbundled-src-assets',
         apply: 'build',

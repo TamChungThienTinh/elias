@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useMemo, useState} from 'react';
 import {
   Bookmark,
   BookOpen,
@@ -6,16 +6,20 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Clock,
   Crown,
   Download,
   Lock,
+  QrCode,
   Search,
+  WifiOff,
   X,
 } from 'lucide-react';
 import {ARCS, CHAPTERS} from '../data/chapters';
 import type {OfflineChapterRecord, ReadingProgress} from '../types';
 import {
-  calculateReadingTimeMinutes,
+  AVERAGE_READING_WORDS_PER_MINUTE,
+  buildChapterReadingStatsMap,
   filterChaptersByQuery,
   formatCount,
   isChapterShowingVipLabel,
@@ -33,6 +37,8 @@ interface CatalogViewProps {
   onToggleFavorite: (chapterId: string) => void;
   onToggleOffline: (chapterId: string) => void;
   onDownloadAllOffline: () => void;
+  onOpenVipActivation: () => void;
+  onOpenVipGuide: () => void;
 }
 
 type CatalogFilter = 'all' | 'favorites' | 'offline';
@@ -48,6 +54,8 @@ export function CatalogView({
   onToggleFavorite,
   onToggleOffline,
   onDownloadAllOffline,
+  onOpenVipActivation,
+  onOpenVipGuide,
 }: CatalogViewProps) {
   const [filter, setFilter] = useState<CatalogFilter>('all');
   const [sortBy, setSortBy] = useState<CatalogSort>('order');
@@ -56,6 +64,10 @@ export function CatalogView({
 
   const offlineIds = new Set(offlineChapters.map((r) => r.chapterId));
   const readSet = new Set(readHistory);
+  const readingStatsByChapterId = useMemo(
+    () => buildChapterReadingStatsMap(CHAPTERS),
+    []
+  );
 
   const searchedChapters = filterChaptersByQuery(CHAPTERS, searchQuery);
   const filteredChapters = sortChapters(
@@ -99,10 +111,20 @@ export function CatalogView({
         <button
           type="button"
           onClick={onDownloadAllOffline}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md border border-white/[0.12] bg-[#13161F] hover:border-[#C69B53] text-xs font-medium text-[#E6E3DC] transition-colors whitespace-nowrap self-start sm:self-auto cursor-pointer"
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap self-start sm:self-auto cursor-pointer ${
+            isVip
+              ? 'border-white/[0.12] bg-[#13161F] hover:border-[#C69B53] text-[#E6E3DC]'
+              : 'border-[#C69B53]/45 bg-[#13161F] hover:border-[#C69B53] text-[#E6E3DC]'
+          }`}
         >
           <Download className="w-4 h-4 text-[#C69B53]" aria-hidden="true" />
-          Tải tất cả ngoại tuyến
+          <span>Tải tất cả ngoại tuyến</span>
+          {!isVip && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#D8AE68]">
+              <Crown className="w-3.5 h-3.5" aria-hidden="true" />
+              VIP
+            </span>
+          )}
         </button>
       </div>
 
@@ -144,9 +166,13 @@ export function CatalogView({
           >
             {(
               [
-                {id: 'all', label: `Tất cả (${CHAPTERS.length})`},
-                {id: 'favorites', label: `Yêu thích (${favorites.length})`},
-                {id: 'offline', label: `Ngoại tuyến (${offlineChapters.length})`},
+                {id: 'all', label: `Tất cả (${CHAPTERS.length})`, vipTag: false},
+                {id: 'favorites', label: `Yêu thích (${favorites.length})`, vipTag: false},
+                {
+                  id: 'offline',
+                  label: isVip ? `Ngoại tuyến (${offlineChapters.length})` : 'Ngoại tuyến',
+                  vipTag: !isVip,
+                },
               ] as const
             ).map((tab) => (
               <button
@@ -155,13 +181,21 @@ export function CatalogView({
                 role="tab"
                 aria-selected={filter === tab.id}
                 onClick={() => setFilter(tab.id)}
-                className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                   filter === tab.id
                     ? 'bg-[#C69B53] text-[#0B0D12]'
                     : 'text-[#9A9892] hover:text-[#E6E3DC]'
                 }`}
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                {tab.vipTag && (
+                  <Crown
+                    className={`w-3 h-3 ${
+                      filter === tab.id ? 'text-[#0B0D12]' : 'text-[#C69B53]'
+                    }`}
+                    aria-hidden="true"
+                  />
+                )}
               </button>
             ))}
           </div>
@@ -198,8 +232,47 @@ export function CatalogView({
         </div>
       </div>
 
-      {/* Arc-grouped Accordion chapter list */}
-      {filteredChapters.length === 0 ? (
+      {/* Arc-grouped Accordion chapter list (or VIP Offline Gate on Ngoại tuyến filter) */}
+      {filter === 'offline' && !isVip ? (
+        <div
+          data-testid="catalog-offline-vip-lock"
+          className="p-8 sm:p-10 rounded-xl border border-[#C69B53]/50 bg-[#13161F] text-center space-y-5"
+        >
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#C69B53]/12 border border-[#C69B53]/35 text-[#D8AE68] mx-auto">
+            <WifiOff className="w-5 h-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-2 max-w-lg mx-auto">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#C69B53]">
+              <Crown className="w-3.5 h-3.5" aria-hidden="true" />
+              Quyền lợi Thành viên VIP
+            </p>
+            <h2 className="font-display text-2xl font-semibold text-[#F5F1E8]">
+              Đọc ngoại tuyến không cần mạng dành riêng cho Thành viên VIP
+            </h2>
+            <p className="text-sm text-[#9A9892] leading-relaxed">
+              Kích hoạt gói Thành viên VIP để tải từng chương hoặc toàn bộ Arc về máy, lưu trữ an toàn theo tài khoản và đọc mượt mà ngay cả khi ngoại tuyến.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onOpenVipActivation}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <Crown className="w-4 h-4" aria-hidden="true" />
+              Nâng cấp VIP ngay
+            </button>
+            <button
+              type="button"
+              onClick={onOpenVipGuide}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md border border-[#C69B53]/45 hover:border-[#C69B53] text-[#D8AE68] text-xs sm:text-sm font-medium transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <QrCode className="w-4 h-4" aria-hidden="true" />
+              Hướng dẫn nhận mã VIP
+            </button>
+          </div>
+        </div>
+      ) : filteredChapters.length === 0 ? (
         <div className="py-16 text-center rounded-lg border border-white/[0.08] bg-[#13161F] space-y-3">
           <p className="text-sm text-[#C9C5BC]">
             {searchQuery
@@ -229,6 +302,10 @@ export function CatalogView({
             const isCollapsed =
               searchQuery.trim().length > 0 ? false : Boolean(collapsedArcs[arc.id]);
             const readInArc = arcChapters.filter((c) => readSet.has(c.id)).length;
+            const arcTotalMinutes = arcChapters.reduce(
+              (sum, ch) => sum + (readingStatsByChapterId[ch.id]?.minutes ?? 1),
+              0
+            );
 
             return (
               <section
@@ -268,7 +345,7 @@ export function CatalogView({
                     </div>
                   </div>
                   <span className="text-xs text-[#C69B53] font-medium whitespace-nowrap tabular-nums pl-8 sm:pl-0">
-                    {arcChapters.length} chương · Đã đọc {readInArc}/{arcChapters.length}
+                    {arcChapters.length} chương · {arcTotalMinutes} phút đọc · Đã đọc {readInArc}/{arcChapters.length}
                   </span>
                 </button>
 
@@ -284,7 +361,7 @@ export function CatalogView({
                       const isRead = readSet.has(chapter.id);
                       const showVipLabel = isChapterShowingVipLabel(chapter);
                       const isLockedVip = isChapterVipCurrentlyLocked(chapter, isVip);
-                      const minutes = calculateReadingTimeMinutes(chapter.paragraphs);
+                      const readingStats = readingStatsByChapterId[chapter.id];
 
                       return (
                         <div
@@ -293,13 +370,24 @@ export function CatalogView({
                         >
                           <div className="min-w-0 flex-1 space-y-1.5">
                             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[#8E8C86]">
-                              <span className="tabular-nums">
+                              <span className="tabular-nums font-medium text-[#C9C5BC]">
                                 Chương {chapter.number}
                               </span>
                               <span aria-hidden="true">·</span>
-                              <span className="tabular-nums">{chapter.publishedAt}</span>
+                              <span
+                                data-testid={`catalog-reading-time-${chapter.number}`}
+                                title={`Tính theo ${formatCount(readingStats.wordCount)} từ thực tế (${AVERAGE_READING_WORDS_PER_MINUTE} từ/phút)`}
+                                className="inline-flex items-center gap-1 text-[#D8AE68] font-medium tabular-nums"
+                              >
+                                <Clock className="w-3.5 h-3.5 text-[#C69B53]" aria-hidden="true" />
+                                {readingStats.label}
+                              </span>
                               <span aria-hidden="true">·</span>
-                              <span className="tabular-nums">{minutes} phút đọc</span>
+                              <span className="tabular-nums">
+                                {formatCount(readingStats.wordCount)} từ
+                              </span>
+                              <span aria-hidden="true">·</span>
+                              <span className="tabular-nums">{chapter.publishedAt}</span>
                               <span aria-hidden="true">·</span>
                               <span className="tabular-nums">
                                 {formatCount(chapter.views)} lượt xem
@@ -369,21 +457,33 @@ export function CatalogView({
                               type="button"
                               onClick={() => onToggleOffline(chapter.id)}
                               aria-label={
-                                isOffline
+                                !isVip
+                                  ? `Tải ngoại tuyến Chương ${chapter.number} (Dành cho VIP)`
+                                  : isOffline
                                   ? `Xóa bản ngoại tuyến Chương ${chapter.number}`
                                   : `Tải ngoại tuyến Chương ${chapter.number}`
                               }
-                              aria-pressed={isOffline}
-                              className={`inline-flex items-center justify-center w-10 h-10 rounded-md border transition-colors cursor-pointer ${
-                                isOffline
-                                  ? 'border-[#7EC49A]/60 bg-[#7EC49A]/10 text-[#7EC49A]'
+                              aria-pressed={isVip ? isOffline : false}
+                              className={`relative inline-flex items-center justify-center w-10 h-10 rounded-md border transition-colors cursor-pointer ${
+                                isVip && isOffline
+                                  ? 'border-[#7EC49A]/60 bg-[#7EC49A]/12 text-[#7EC49A]'
+                                  : !isVip
+                                  ? 'border-[#C69B53]/35 text-[#B5A584] hover:text-[#D8AE68] hover:border-[#C69B53]'
                                   : 'border-white/[0.1] text-[#9A9892] hover:text-[#E6E3DC] hover:border-white/[0.25]'
                               }`}
                             >
-                              {isOffline ? (
+                              {isVip && isOffline ? (
                                 <Check className="w-4 h-4" />
                               ) : (
-                                <Download className="w-4 h-4" />
+                                <>
+                                  <Download className="w-4 h-4" />
+                                  {!isVip && (
+                                    <Crown
+                                      aria-hidden="true"
+                                      className="w-2.5 h-2.5 text-[#D8AE68] absolute top-1 right-1"
+                                    />
+                                  )}
+                                </>
                               )}
                             </button>
 

@@ -8,6 +8,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Crown,
   Download,
   Heart,
@@ -37,9 +38,11 @@ import type {
   VipRedeemResult,
 } from '../types';
 import {
+  AVERAGE_READING_WORDS_PER_MINUTE,
   calculateReadingProgressPercent,
-  calculateReadingTimeMinutes,
+  calculateRemainingReadingTime,
   formatCount,
+  getChapterReadingStats,
   getPublicUnlockCountdownText,
   isChapterVipCurrentlyLocked,
   paginateParagraphs,
@@ -415,7 +418,15 @@ export function ReaderView({
   };
 
   const chapterComments = comments.filter((c) => c.chapterId === chapter.id);
-  const readingMinutes = calculateReadingTimeMinutes(chapter.paragraphs);
+  const readingStats = useMemo(
+    () =>
+      getChapterReadingStats(
+        hasFullAccess && chapterParagraphs.length > 0
+          ? chapterParagraphs
+          : chapter.paragraphs
+      ),
+    [hasFullAccess, chapterParagraphs, chapter.paragraphs]
+  );
   const displayProgress = calculateReadingProgressPercent({
     mode: settings.readingMode,
     scrollOffset: scrollPercent,
@@ -423,13 +434,17 @@ export function ReaderView({
     pageIndex,
     totalPages: pages.length,
   });
+  const remainingReading = calculateRemainingReadingTime(
+    readingStats.wordCount,
+    displayProgress
+  );
 
   return (
     <div
       data-reader-theme={settings.theme}
       className={`min-h-[calc(100vh-4rem)] transition-colors duration-200 ${palette.pageBg} ${palette.textPrimary}`}
     >
-      {/* Thanh tiến trình đọc màu vàng đồng mỏng gắn ngay dưới Header */}
+      {/* Thanh tiến trình đọc siêu mảnh màu vàng đồng kèm chỉ báo số phút đọc còn lại */}
       <div
         data-testid="reader-progress-bar"
         className={`sticky top-16 z-30 ${palette.toolbarBg} backdrop-blur-md border-b ${palette.border} transition-colors`}
@@ -440,7 +455,8 @@ export function ReaderView({
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={displayProgress}
-          className="w-full h-[3px] bg-[#C69B53]/18 overflow-hidden"
+          aria-valuetext={`Đã đọc ${displayProgress}%, ${remainingReading.label}`}
+          className="w-full h-[2.5px] bg-[#C69B53]/18 overflow-hidden"
         >
           <div
             data-testid="reader-progress-fill"
@@ -448,18 +464,30 @@ export function ReaderView({
             style={{transform: `scaleX(${displayProgress / 100})`}}
           />
         </div>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-6 flex items-center justify-between gap-4 text-[11px]">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-6 flex items-center justify-between gap-3 text-[11px]">
           <span className={`truncate ${palette.textMuted}`}>
             Chương {chapter.number}: {chapter.title}
           </span>
-          <span
-            data-testid="reader-progress-percent"
-            className={`font-medium tabular-nums whitespace-nowrap shrink-0 ${palette.accentText}`}
-          >
-            {settings.readingMode === 'paged'
-              ? `Trang ${pageIndex + 1}/${pages.length} · ${displayProgress}%`
-              : `Đã đọc ${displayProgress}%`}
-          </span>
+          <div className="flex items-center gap-2 whitespace-nowrap shrink-0 tabular-nums">
+            <span
+              data-testid="reader-remaining-time"
+              className={`inline-flex items-center gap-1 font-medium ${palette.accentText}`}
+            >
+              <Clock className="w-3 h-3" aria-hidden="true" />
+              {remainingReading.label}
+            </span>
+            <span aria-hidden="true" className={palette.textMuted}>
+              ·
+            </span>
+            <span
+              data-testid="reader-progress-percent"
+              className={palette.textMuted}
+            >
+              {settings.readingMode === 'paged'
+                ? `Trang ${pageIndex + 1}/${pages.length} (${displayProgress}%)`
+                : `${displayProgress}%`}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -643,24 +671,33 @@ export function ReaderView({
             <button
               type="button"
               onClick={() => onToggleOffline(chapter.id)}
-              aria-pressed={isOfflineSaved}
+              aria-pressed={isVip ? isOfflineSaved : false}
               aria-label={
-                isOfflineSaved ? 'Đã lưu ngoại tuyến' : 'Tải chương đọc ngoại tuyến'
+                !isVip
+                  ? 'Tải chương đọc ngoại tuyến (Dành cho Thành viên VIP)'
+                  : isOfflineSaved
+                  ? 'Đã lưu ngoại tuyến'
+                  : 'Tải chương đọc ngoại tuyến'
               }
               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                isOfflineSaved
+                isVip && isOfflineSaved
                   ? 'border-[#7EC49A]/70 bg-[#7EC49A]/15 text-[#58A377]'
+                  : !isVip
+                  ? `border-[#C69B53]/45 ${palette.buttonIdle}`
                   : `${palette.border} ${palette.buttonIdle}`
               }`}
             >
-              {isOfflineSaved ? (
+              {isVip && isOfflineSaved ? (
                 <Check className="w-3.5 h-3.5" />
               ) : (
                 <Download className="w-3.5 h-3.5" />
               )}
               <span className="hidden sm:inline">
-                {isOfflineSaved ? 'Đã lưu' : 'Ngoại tuyến'}
+                {isVip && isOfflineSaved ? 'Đã lưu' : 'Ngoại tuyến'}
               </span>
+              {!isVip && (
+                <Crown className="w-3 h-3 text-[#C69B53]" aria-hidden="true" />
+              )}
             </button>
           </div>
         </div>
@@ -675,11 +712,20 @@ export function ReaderView({
               {arc?.title || 'Arc'}
             </span>
             <span aria-hidden="true">·</span>
-            <span className="tabular-nums">Chương {chapter.number}</span>
+            <span className="tabular-nums font-medium">Chương {chapter.number}</span>
+            <span aria-hidden="true">·</span>
+            <span
+              data-testid="reader-reading-time"
+              title={`Tính theo ${formatCount(readingStats.wordCount)} từ thực tế (${AVERAGE_READING_WORDS_PER_MINUTE} từ/phút)`}
+              className={`inline-flex items-center gap-1 font-medium tabular-nums ${palette.accentText}`}
+            >
+              <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+              {readingStats.label}
+            </span>
+            <span aria-hidden="true">·</span>
+            <span className="tabular-nums">{formatCount(readingStats.wordCount)} từ</span>
             <span aria-hidden="true">·</span>
             <span className="tabular-nums">{chapter.publishedAt}</span>
-            <span aria-hidden="true">·</span>
-            <span className="tabular-nums">{readingMinutes} phút đọc</span>
             {isOfflineSaved && (
               <>
                 <span aria-hidden="true">·</span>

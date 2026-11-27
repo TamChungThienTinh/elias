@@ -276,3 +276,126 @@ test('buildVipTransferNote and buildVietQrUrl generate valid encoded VietQR URLs
   );
 });
 
+test('canUseOfflineDownload and shouldPurgeOfflineStorage enforce active VIP and trigger purge on expiry', async () => {
+  const {canUseOfflineDownload, shouldPurgeOfflineStorage} = await import('./readerLogic');
+  const now = new Date('2026-11-26T12:00:00Z');
+  const futureExpiry = '2026-12-26T12:00:00Z';
+  const expiredDate = '2026-11-25T12:00:00Z';
+
+  // Non-VIP / Guest
+  assert.equal(canUseOfflineDownload(false, null, now), false);
+  assert.equal(shouldPurgeOfflineStorage(false, null, 2, now), true);
+  assert.equal(shouldPurgeOfflineStorage(false, null, 0, now), false);
+
+  // Expired VIP
+  assert.equal(canUseOfflineDownload(true, expiredDate, now), false);
+  assert.equal(shouldPurgeOfflineStorage(true, expiredDate, 1, now), true);
+
+  // Active VIP (with future expiry) & Lifetime VIP (null expiry)
+  assert.equal(canUseOfflineDownload(true, futureExpiry, now), true);
+  assert.equal(shouldPurgeOfflineStorage(true, futureExpiry, 3, now), false);
+  assert.equal(canUseOfflineDownload(true, null, now), true);
+  assert.equal(shouldPurgeOfflineStorage(true, null, 3, now), false);
+});
+
+test('History API clean routing builds and parses /muc-luc, /thu-vien, /cua-hang, /chuong/1 and upgrades legacy hashes', async () => {
+  const {buildRoutePath, parsePathnameRoute} = await import('./routing');
+
+  // Clean URL building (no #/ anywhere)
+  assert.equal(buildRoutePath('home'), '/');
+  assert.equal(buildRoutePath('catalog'), '/muc-luc');
+  assert.equal(buildRoutePath('merch'), '/cua-hang');
+  assert.equal(buildRoutePath('library'), '/thu-vien');
+  assert.equal(buildRoutePath('reader', 'arc-1-chuong-1'), '/chuong/1');
+  assert.equal(buildRoutePath('reader', 'arc-1-chuong-2'), '/chuong/2');
+  assert.equal(buildRoutePath('reader', 'arc-2-chuong-3'), '/chuong/3');
+
+  // Clean pathname parsing
+  assert.deepEqual(parsePathnameRoute('/'), {route: 'home'});
+  assert.deepEqual(parsePathnameRoute('/muc-luc'), {route: 'catalog'});
+  assert.deepEqual(parsePathnameRoute('/muc-luc/'), {route: 'catalog'});
+  assert.deepEqual(parsePathnameRoute('/thu-vien'), {route: 'library'});
+  assert.deepEqual(parsePathnameRoute('/cua-hang'), {route: 'merch'});
+  assert.deepEqual(parsePathnameRoute('/chuong/1'), {
+    route: 'reader',
+    chapterId: 'arc-1-chuong-1',
+  });
+  assert.deepEqual(parsePathnameRoute('/chuong/3'), {
+    route: 'reader',
+    chapterId: 'arc-2-chuong-3',
+  });
+  assert.deepEqual(parsePathnameRoute('/chuong/arc-1-chuong-2'), {
+    route: 'reader',
+    chapterId: 'arc-1-chuong-2',
+  });
+  assert.deepEqual(parsePathnameRoute('/khong-ton-tai'), {route: 'home'});
+
+  // Legacy hash bookmark auto-upgrade to clean History API URL
+  assert.deepEqual(parsePathnameRoute('/', '#/doc/arc-1-chuong-2'), {
+    route: 'reader',
+    chapterId: 'arc-1-chuong-2',
+    shouldReplaceCleanPath: '/chuong/2',
+  });
+  assert.deepEqual(parsePathnameRoute('/', '#/thu-vien'), {
+    route: 'library',
+    shouldReplaceCleanPath: '/thu-vien',
+  });
+});
+
+test('countParagraphWords, getChapterReadingStats, and buildChapterReadingStatsMap compute exact reading time from actual chapter words', async () => {
+  const {
+    countParagraphWords,
+    getChapterReadingStats,
+    buildChapterReadingStatsMap,
+    calculateTotalReadingMinutes,
+  } = await import('./readerLogic');
+
+  // Punctuation-only tokens like "—" are excluded from word count
+  assert.equal(countParagraphWords(['Trần Khắc — người gác đèn cố đô.', '']), 7);
+
+  // 440 words at 220 wpm => exactly 2 minutes with label '2 phút đọc'
+  const words440 = Array.from({length: 440}, () => 'chương').join(' ');
+  const stats = getChapterReadingStats([words440]);
+  assert.equal(stats.wordCount, 440);
+  assert.equal(stats.minutes, 2);
+  assert.equal(stats.label, '2 phút đọc');
+
+  // Map helper produces matching actual stats for all chapters
+  const statsMap = buildChapterReadingStatsMap(CHAPTERS);
+  for (const ch of CHAPTERS) {
+    assert.equal(statsMap[ch.id].label, `${statsMap[ch.id].minutes} phút đọc`);
+    assert.ok(statsMap[ch.id].wordCount > 100);
+  }
+
+  // Total reading time across all sample chapters is sum of individual chapters
+  const total = calculateTotalReadingMinutes(CHAPTERS);
+  const manualSum = CHAPTERS.reduce(
+    (acc, ch) => acc + statsMap[ch.id].minutes,
+    0
+  );
+  assert.equal(total, manualSum);
+});
+
+test('calculateRemainingReadingTime decreases remaining minutes smoothly with scroll progress', async () => {
+  const {calculateRemainingReadingTime} = await import('./readerLogic');
+
+  // 660 words at 220 wpm => 3 minutes total
+  assert.deepEqual(calculateRemainingReadingTime(660, 0), {
+    remainingMinutes: 3,
+    label: 'Còn 3 phút đọc',
+  });
+  assert.deepEqual(calculateRemainingReadingTime(660, 40), {
+    remainingMinutes: 2,
+    label: 'Còn 2 phút đọc',
+  });
+  assert.deepEqual(calculateRemainingReadingTime(660, 75), {
+    remainingMinutes: 1,
+    label: 'Còn 1 phút đọc',
+  });
+  assert.deepEqual(calculateRemainingReadingTime(660, 99), {
+    remainingMinutes: 0,
+    label: 'Đã đọc xong',
+  });
+});
+
+
