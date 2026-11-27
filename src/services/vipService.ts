@@ -16,9 +16,9 @@ export const MOCK_DEMO_VIP_CODES: Record<
   string,
   {durationDays: number | null; label: string}
 > = {
-  'VIP30-HUYETNGUYET': {durationDays: 30, label: 'Gói 1 tháng (30 ngày)'},
-  'VIP90-THACHUYEN': {durationDays: 90, label: 'Gói 3 tháng (90 ngày)'},
-  'VIPFULL-MACLAM': {durationDays: null, label: 'Gói Vĩnh viễn'},
+  'VIP30-DEMO': {durationDays: 30, label: 'Gói 1 tháng (30 ngày)'},
+  'VIP90-DEMO': {durationDays: 90, label: 'Gói 3 tháng (90 ngày)'},
+  'VIPFULL-DEMO': {durationDays: null, label: 'Gói Vĩnh viễn'},
 };
 
 export interface SupabaseProfileRow {
@@ -174,7 +174,7 @@ export async function redeemVipCodeService(params: {
     return {
       success: false,
       message:
-        'Mã không tồn tại trong chế độ thử nghiệm. Hãy thử mã mẫu: VIP30-HUYETNGUYET, VIP90-THACHUYEN hoặc VIPFULL-MACLAM.',
+        'Mã không tồn tại trong chế độ thử nghiệm. Hãy thử mã mẫu: VIP30-DEMO, VIP90-DEMO hoặc VIPFULL-DEMO.',
     };
   }
 

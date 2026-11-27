@@ -95,7 +95,7 @@ export function CatalogView({
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 sm:py-14 space-y-9">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 sm:py-14 space-y-9 fade-in-up">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-white/[0.08]">
         <div>
@@ -143,7 +143,7 @@ export function CatalogView({
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm theo tên hoặc số chương (ví dụ: Chương 2, Tháp Nhật Thực...)"
+            placeholder="Tìm theo tên hoặc số chương (ví dụ: Chương 1...)"
             className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-[#13161F] border border-white/[0.1] text-sm text-[#F1ECE1] placeholder:text-[#7D7B75] focus:outline-none focus:border-[#C69B53]"
           />
           {searchQuery && (

@@ -37,7 +37,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
 };
 
 export const DEFAULT_PROFILE: ReaderProfile = {
-  displayName: 'Độc giả Thạch Uyên',
+  displayName: 'Độc giả',
   email: '',
   isVip: false,
   vipExpiresAt: null,

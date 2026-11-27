@@ -36,13 +36,13 @@ export function MerchView({onSelectMerch, onAddToCart}: MerchViewProps) {
   const items = filterMerchItems(MERCH_ITEMS, category, status);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14 space-y-10">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14 space-y-10 fade-in-up">
       {/* Header */}
       <div className="pb-6 border-b border-white/[0.08] flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="max-w-2xl">
           <p className="text-xs font-medium text-[#C69B53]">Cửa hàng chính hãng</p>
           <h1 className="font-display text-3xl sm:text-4xl font-semibold text-[#F5F1E8] mt-1">
-            Bộ sưu tập Merch Huyết Nguyệt
+            Bộ sưu tập Merch chính hãng
           </h1>
           <p className="text-sm text-[#9A9892] mt-2 leading-relaxed">
             Standee acrylic, móc khóa kim loại tráng men, tranh in mỹ thuật và artbook phát hành giới hạn. Thêm nhanh vào giỏ hàng hoặc bấm xem ảnh lớn để đặt trực tiếp qua Shopee, Zalo, Google Form.
@@ -118,7 +118,8 @@ export function MerchView({onSelectMerch, onAddToCart}: MerchViewProps) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
           {items.map((item) => {
-            const statusText = getMerchStatusLabel(item.status);
+            const statusText =
+              item.stockStatusLabel || getMerchStatusLabel(item.status);
             const isOutOfStock = item.status === 'het-hang';
             const statusClass =
               item.status === 'con-hang'
@@ -141,6 +142,7 @@ export function MerchView({onSelectMerch, onAddToCart}: MerchViewProps) {
                   <SafeImage
                     src={item.image}
                     alt={item.name}
+                    placeholderText="Chỗ đặt ảnh sản phẩm Merch (tỷ lệ 4:3)"
                     className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03] ${
                       isOutOfStock ? 'opacity-65' : ''
                     }`}
@@ -173,7 +175,7 @@ export function MerchView({onSelectMerch, onAddToCart}: MerchViewProps) {
                   <div className="space-y-3 pt-3 border-t border-white/[0.07]">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[15px] font-semibold text-[#C69B53] tabular-nums">
-                        {formatVnd(item.priceVnd)}
+                        {item.priceDisplay || formatVnd(item.priceVnd)}
                       </span>
                     </div>
 

@@ -1,4 +1,4 @@
-import {NOVEL_INFO} from '../data/chapters';
+import {SITE_CONFIG} from '../data/siteConfig';
 import type {ViewRoute} from '../types';
 
 interface FooterProps {
@@ -11,10 +11,10 @@ export function Footer({onNavigate}: FooterProps) {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
         <div>
           <p className="font-display text-base font-semibold text-[#E6E3DC]">
-            {NOVEL_INFO.title}
+            {SITE_CONFIG.siteName}
           </p>
           <p className="text-xs text-[#8C8A84] mt-1">
-            Tác giả {NOVEL_INFO.author} · {NOVEL_INFO.updateSchedule}
+            Tác giả {SITE_CONFIG.authorName} · {SITE_CONFIG.updateSchedule}
           </p>
         </div>
 
@@ -50,7 +50,7 @@ export function Footer({onNavigate}: FooterProps) {
         </nav>
 
         <p className="text-xs text-[#6E6D68]">
-          © 2026 {NOVEL_INFO.author}. Bản quyền nội dung &amp; minh họa.
+          © 2026 {SITE_CONFIG.authorName}. Bản quyền nội dung &amp; minh họa.
         </p>
       </div>
     </footer>

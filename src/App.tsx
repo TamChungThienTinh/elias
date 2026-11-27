@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {CHAPTERS} from './data/chapters';
 import {MERCH_ITEMS} from './data/merch';
+import {SITE_CONFIG} from './data/siteConfig';
 import {isSupabaseConfigured, supabase} from './lib/supabase';
 import {
   fetchSupabaseProfile,
@@ -48,6 +49,7 @@ import {CartDrawer} from './components/CartDrawer';
 import {AuthModal} from './components/AuthModal';
 import {VipGuideModal} from './components/VipGuideModal';
 import {VipOfflineGateModal} from './components/VipOfflineGateModal';
+import {BackToTopButton} from './components/BackToTopButton';
 import {buildRoutePath, parsePathnameRoute} from './utils/routing';
 
 export default function App() {
@@ -72,7 +74,14 @@ export default function App() {
   const [requestedLibraryTab, setRequestedLibraryTab] =
     useState<LibraryTab | null>(null);
   const [focusVipInputSignal, setFocusVipInputSignal] = useState(0);
+  const [focusMode, setFocusMode] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (route !== 'reader') {
+      setFocusMode(false);
+    }
+  }, [route]);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -84,9 +93,9 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
 
-  // Đảm bảo tiêu đề tab trình duyệt luôn là "Huyết Án Đa Diện"
+  // Đồng bộ tiêu đề tab trình duyệt từ file cấu hình duy nhất siteConfig.ts
   useEffect(() => {
-    document.title = 'Huyết Án Đa Diện';
+    document.title = SITE_CONFIG.siteName;
   }, [route, activeChapterId]);
 
   // Đồng bộ lưu trạng thái vào localStorage
@@ -249,7 +258,7 @@ export default function App() {
         nextPath
       );
     }
-    window.scrollTo({top: 0, behavior: 'auto'});
+    window.scrollTo({top: 0, behavior: 'smooth'});
   }, []);
 
   const openChapter = useCallback(
@@ -356,7 +365,7 @@ export default function App() {
             info: 'Đăng ký thành công! Vui lòng kiểm tra hộp thư email để xác nhận tài khoản trước khi đăng nhập.',
           };
         }
-        showToast(`Chào mừng ${displayName} gia nhập Huyết Nguyệt!`);
+        showToast(`Chào mừng ${displayName} gia nhập ${SITE_CONFIG.siteName}!`);
         return {};
       }
 
@@ -399,8 +408,8 @@ export default function App() {
     // Mock Mode Google OAuth
     const mockUser: AuthUser = {
       id: 'mock-google-reader',
-      email: 'docgia.thachuyen@gmail.com',
-      displayName: 'Minh Quân',
+      email: 'docgia@example.com',
+      displayName: 'Độc giả Demo',
       provider: 'google',
     };
     setPersisted((prev) => ({
@@ -760,7 +769,7 @@ export default function App() {
 
   const handleTriggerNotificationTest = useCallback(() => {
     const latest = CHAPTERS[CHAPTERS.length - 1];
-    const title = 'Huyết Án Đa Diện — Chương mới đã phát hành';
+    const title = `${SITE_CONFIG.storyTitle} — Chương mới đã phát hành`;
     const body = `Chương ${latest.number}: ${latest.title}`;
 
     if (
@@ -857,21 +866,30 @@ export default function App() {
     [persisted.cart]
   );
 
+  const hideChromeForFocus = route === 'reader' && focusMode;
+
   return (
     <div className="min-h-screen flex flex-col bg-[#0B0D12] text-[#E6E3DC]">
-      <Header
-        currentRoute={route}
-        cartCount={cartTotals.totalQuantity}
-        authUser={persisted.authUser}
-        isVipActive={isVipActive}
-        onNavigate={(r) => navigate(r)}
-        onOpenCart={() => setCartOpen(true)}
-        onOpenAuthModal={() => handleOpenAuthModal()}
-        onOpenVipTab={handleOpenVipTab}
-        onSignOut={handleSignOut}
-      />
+      {!hideChromeForFocus && (
+        <Header
+          currentRoute={route}
+          cartCount={cartTotals.totalQuantity}
+          authUser={persisted.authUser}
+          isVipActive={isVipActive}
+          onNavigate={(r) => navigate(r)}
+          onOpenCart={() => setCartOpen(true)}
+          onOpenAuthModal={() => handleOpenAuthModal()}
+          onOpenVipTab={handleOpenVipTab}
+          onSignOut={handleSignOut}
+        />
+      )}
 
       <main className="flex-1">
+        <div
+          key={route === 'reader' ? `reader-${activeChapter.id}` : route}
+          data-testid="page-transition-shell"
+          className="page-fade-in"
+        >
         {route === 'home' && (
           <HomeView
             progress={persisted.progress}
@@ -919,6 +937,7 @@ export default function App() {
               )
             }
             isVip={isVipActive}
+            isFocusMode={focusMode}
             focusVipInputSignal={focusVipInputSignal}
             defaultAuthorName={
               persisted.authUser?.displayName || persisted.profile.displayName
@@ -931,6 +950,7 @@ export default function App() {
             onBackToCatalog={() => navigate('catalog')}
             onToggleFavorite={handleToggleFavorite}
             onToggleOffline={handleToggleOffline}
+            onToggleFocusMode={() => setFocusMode((prev) => !prev)}
             onOpenAuthModal={handleOpenAuthModal}
             onOpenVipGuideModal={() => setVipGuideOpen(true)}
             onRedeemVipCode={handleRedeemVipCode}
@@ -974,9 +994,12 @@ export default function App() {
             onNotifyToast={showToast}
           />
         )}
+        </div>
       </main>
 
-      {route !== 'reader' && <Footer onNavigate={(r) => navigate(r)} />}
+      {route !== 'reader' && !hideChromeForFocus && (
+        <Footer onNavigate={(r) => navigate(r)} />
+      )}
 
       {/* Modals & Drawers */}
       <MerchModal
@@ -1021,6 +1044,9 @@ export default function App() {
           setVipGuideOpen(true);
         }}
       />
+
+      {/* Back to top button (visible after scrolling > 500px) */}
+      <BackToTopButton offsetForToast={Boolean(toastMessage)} />
 
       {/* Toast Notification */}
       {toastMessage && (

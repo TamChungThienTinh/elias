@@ -8,6 +8,7 @@ import {
   User,
   X,
 } from 'lucide-react';
+import {SITE_CONFIG} from '../data/siteConfig';
 import type {AuthUser, ViewRoute} from '../types';
 import {buildRoutePath} from '../utils/routing';
 
@@ -91,7 +92,7 @@ export function Header({
           }}
           className="font-display text-lg sm:text-xl font-semibold tracking-tight text-[#F1ECE1] hover:text-[#C69B53] transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C69B53] rounded-sm"
         >
-          Huyết Án Đa Diện
+          {SITE_CONFIG.siteName}
         </a>
 
         {/* Zone 2: 4 concise single-line nav links */}

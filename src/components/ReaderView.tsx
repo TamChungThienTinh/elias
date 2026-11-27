@@ -16,7 +16,9 @@ import {
   List,
   Lock,
   LogIn,
+  Maximize2,
   MessageSquare,
+  Minimize2,
   Minus,
   Moon,
   Plus,
@@ -58,6 +60,7 @@ interface ReaderViewProps {
   isFavorite: boolean;
   isOfflineSaved: boolean;
   isVip: boolean;
+  isFocusMode: boolean;
   focusVipInputSignal: number;
   defaultAuthorName: string;
   comments: ChapterComment[];
@@ -68,6 +71,7 @@ interface ReaderViewProps {
   onBackToCatalog: () => void;
   onToggleFavorite: (chapterId: string) => void;
   onToggleOffline: (chapterId: string) => void;
+  onToggleFocusMode: () => void;
   onOpenAuthModal: (reason?: string) => void;
   onOpenVipGuideModal: () => void;
   onRedeemVipCode: (code: string) => Promise<VipRedeemResult>;
@@ -160,6 +164,7 @@ export function ReaderView({
   isFavorite,
   isOfflineSaved,
   isVip,
+  isFocusMode,
   focusVipInputSignal,
   defaultAuthorName,
   comments,
@@ -170,6 +175,7 @@ export function ReaderView({
   onBackToCatalog,
   onToggleFavorite,
   onToggleOffline,
+  onToggleFocusMode,
   onOpenAuthModal,
   onOpenVipGuideModal,
   onRedeemVipCode,
@@ -221,6 +227,18 @@ export function ReaderView({
       cancelled = true;
     };
   }, [chapter, isVip, authUser?.id]);
+
+  // Hỗ trợ phím Esc để thoát nhanh Chế độ tập trung
+  useEffect(() => {
+    if (!isFocusMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onToggleFocusMode();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFocusMode, onToggleFocusMode]);
 
   const isLockedVip = !hasFullAccess;
   const visibleParagraphs = chapterParagraphs;
@@ -442,12 +460,18 @@ export function ReaderView({
   return (
     <div
       data-reader-theme={settings.theme}
-      className={`min-h-[calc(100vh-4rem)] transition-colors duration-200 ${palette.pageBg} ${palette.textPrimary}`}
+      className={`${
+        isFocusMode ? 'min-h-screen' : 'min-h-[calc(100vh-4rem)]'
+      } transition-colors duration-200 ${palette.pageBg} ${palette.textPrimary}`}
     >
       {/* Thanh tiến trình đọc siêu mảnh màu vàng đồng kèm chỉ báo số phút đọc còn lại */}
       <div
         data-testid="reader-progress-bar"
-        className={`sticky top-16 z-30 ${palette.toolbarBg} backdrop-blur-md border-b ${palette.border} transition-colors`}
+        className={`sticky ${
+          isFocusMode ? 'top-0' : 'top-16'
+        } z-30 ${palette.toolbarBg} backdrop-blur-md ${
+          isFocusMode ? '' : `border-b ${palette.border}`
+        } transition-colors`}
       >
         <div
           role="progressbar"
@@ -464,35 +488,54 @@ export function ReaderView({
             style={{transform: `scaleX(${displayProgress / 100})`}}
           />
         </div>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-6 flex items-center justify-between gap-3 text-[11px]">
-          <span className={`truncate ${palette.textMuted}`}>
-            Chương {chapter.number}: {chapter.title}
-          </span>
-          <div className="flex items-center gap-2 whitespace-nowrap shrink-0 tabular-nums">
-            <span
-              data-testid="reader-remaining-time"
-              className={`inline-flex items-center gap-1 font-medium ${palette.accentText}`}
-            >
-              <Clock className="w-3 h-3" aria-hidden="true" />
-              {remainingReading.label}
+        {!isFocusMode && (
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-6 flex items-center justify-between gap-3 text-[11px]">
+            <span className={`truncate ${palette.textMuted}`}>
+              Chương {chapter.number}: {chapter.title}
             </span>
-            <span aria-hidden="true" className={palette.textMuted}>
-              ·
-            </span>
-            <span
-              data-testid="reader-progress-percent"
-              className={palette.textMuted}
-            >
-              {settings.readingMode === 'paged'
-                ? `Trang ${pageIndex + 1}/${pages.length} (${displayProgress}%)`
-                : `${displayProgress}%`}
-            </span>
+            <div className="flex items-center gap-2 whitespace-nowrap shrink-0 tabular-nums">
+              <span
+                data-testid="reader-remaining-time"
+                className={`inline-flex items-center gap-1 font-medium ${palette.accentText}`}
+              >
+                <Clock className="w-3 h-3" aria-hidden="true" />
+                {remainingReading.label}
+              </span>
+              <span aria-hidden="true" className={palette.textMuted}>
+                ·
+              </span>
+              <span
+                data-testid="reader-progress-percent"
+                className={palette.textMuted}
+              >
+                {settings.readingMode === 'paged'
+                  ? `Trang ${pageIndex + 1}/${pages.length} (${displayProgress}%)`
+                  : `${displayProgress}%`}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Reader Customization Toolbar */}
+      {/* Nút nổi nhỏ gọn để thoát Chế độ tập trung (hoặc bấm Esc) */}
+      {isFocusMode && (
+        <button
+          type="button"
+          data-testid="reader-exit-focus-mode"
+          onClick={onToggleFocusMode}
+          aria-label="Thoát chế độ tập trung"
+          title="Thoát chế độ tập trung (Esc)"
+          className={`fixed top-4 right-4 z-40 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#C69B53]/45 hover:border-[#C69B53] ${palette.toolbarBg} backdrop-blur-md text-xs font-medium ${palette.textPrimary} opacity-70 hover:opacity-100 shadow-lg transition-all duration-200 cursor-pointer whitespace-nowrap`}
+        >
+          <Minimize2 className="w-3.5 h-3.5 text-[#C69B53]" aria-hidden="true" />
+          <span>Thoát tập trung</span>
+        </button>
+      )}
+
+      {/* Reader Customization Toolbar (ẩn hoàn toàn trong Chế độ tập trung) */}
+      {!isFocusMode && (
       <div
+        data-testid="reader-toolbar"
         className={`border-b ${palette.border} ${palette.toolbarBg} transition-colors`}
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap lg:flex-nowrap items-center justify-between gap-2.5">
@@ -699,12 +742,30 @@ export function ReaderView({
                 <Crown className="w-3 h-3 text-[#C69B53]" aria-hidden="true" />
               )}
             </button>
+
+            <button
+              type="button"
+              data-testid="reader-focus-mode-toggle"
+              onClick={onToggleFocusMode}
+              aria-pressed={isFocusMode}
+              aria-label="Chế độ tập trung"
+              title="Ẩn thanh điều hướng và tập trung đọc truyện"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap cursor-pointer border-[#C69B53]/45 hover:border-[#C69B53] ${palette.buttonIdle}`}
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-[#C69B53]" aria-hidden="true" />
+              <span className="hidden sm:inline">Chế độ tập trung</span>
+            </button>
           </div>
         </div>
       </div>
+      )}
 
       {/* Main Reading Column */}
-      <article className="max-w-2xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
+      <article
+        className={`max-w-2xl mx-auto px-4 sm:px-6 ${
+          isFocusMode ? 'py-14 sm:py-20' : 'py-10 sm:py-14'
+        } fade-in-up`}
+      >
         {/* Chapter Heading */}
         <header className={`pb-6 border-b ${palette.border} space-y-2.5`}>
           <div className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs ${palette.textMuted}`}>
@@ -778,7 +839,7 @@ export function ReaderView({
                 <p
                   key={idx}
                   className={
-                    idx === 0
+                    idx === 0 && !para.trim().startsWith('[')
                       ? 'first-letter:text-5xl first-letter:font-display first-letter:font-semibold first-letter:float-left first-letter:mr-3 first-letter:leading-[0.9] first-letter:text-[#C69B53]'
                       : ''
                   }
@@ -936,7 +997,7 @@ export function ReaderView({
                           setVipCodeInput(e.target.value);
                           if (vipCodeError) setVipCodeError(null);
                         }}
-                        placeholder="Ví dụ: VIP30-HUYETNGUYET"
+                        placeholder="Ví dụ: VIP30-DEMO"
                         autoComplete="off"
                         className={`w-full pl-9 pr-3.5 py-2.5 rounded-md border ${palette.border} ${palette.inputBg} text-sm font-mono uppercase focus:outline-none focus:border-[#C69B53]`}
                       />
@@ -969,7 +1030,7 @@ export function ReaderView({
                   </button>
                   {!isSupabaseConfigured && (
                     <span className={`text-[11px] ${palette.textMuted}`}>
-                      Mã test cục bộ: <strong className="font-mono">VIP30-HUYETNGUYET</strong>
+                      Mã test cục bộ: <strong className="font-mono">VIP30-DEMO</strong>
                     </span>
                   )}
                 </div>
@@ -1025,7 +1086,8 @@ export function ReaderView({
           </button>
         </nav>
 
-        {/* Interactive Comments Section */}
+        {/* Interactive Comments Section (ẩn trong Chế độ tập trung) */}
+        {!isFocusMode && (
         <section
           aria-labelledby="comments-heading"
           className={`mt-14 pt-10 border-t ${palette.border} space-y-6`}
@@ -1151,6 +1213,7 @@ export function ReaderView({
             </ul>
           )}
         </section>
+        )}
       </article>
     </div>
   );

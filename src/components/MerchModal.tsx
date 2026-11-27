@@ -29,7 +29,7 @@ export function MerchModal({item, onClose, onAddToCart}: MerchModalProps) {
   if (!item) return null;
 
   const isOutOfStock = item.status === 'het-hang';
-  const statusLabel = getMerchStatusLabel(item.status);
+  const statusLabel = item.stockStatusLabel || getMerchStatusLabel(item.status);
   const statusColorClass =
     item.status === 'con-hang'
       ? 'text-[#7EC49A]'
@@ -69,6 +69,7 @@ export function MerchModal({item, onClose, onAddToCart}: MerchModalProps) {
               <SafeImage
                 src={item.image}
                 alt={item.name}
+                placeholderText="Chỗ đặt ảnh sản phẩm Merch (tỷ lệ 4:3)"
                 loading="eager"
                 className={`w-full aspect-[4/3] object-cover transition-transform duration-300 ${
                   zoomed ? 'scale-125 cursor-zoom-out' : 'scale-100 cursor-zoom-in'
@@ -117,7 +118,7 @@ export function MerchModal({item, onClose, onAddToCart}: MerchModalProps) {
               </h2>
 
               <p className="text-2xl font-semibold text-[#C69B53] tabular-nums mt-3">
-                {formatVnd(item.priceVnd)}
+                {item.priceDisplay || formatVnd(item.priceVnd)}
               </p>
 
               <p className="text-sm text-[#C9C5BC] leading-relaxed mt-4">

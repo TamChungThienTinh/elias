@@ -18,6 +18,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import {CHAPTERS} from '../data/chapters';
+import {SITE_CONFIG} from '../data/siteConfig';
 import {isSupabaseConfigured} from '../lib/supabase';
 import type {
   AppBackupPayload,
@@ -301,7 +302,7 @@ export function LibraryView({
 
       {/* TAB 1: BOOKMARKS & READING HISTORY */}
       {activeTab === 'bookmarks' && (
-        <div className="space-y-8">
+        <div className="space-y-8 fade-in-up">
           {resumeChapter && progress && (
             <div className="p-6 rounded-lg bg-[#13161F] border border-white/[0.1] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
@@ -412,7 +413,7 @@ export function LibraryView({
 
       {/* TAB 2: OFFLINE CHAPTERS (VIP-ONLY) */}
       {activeTab === 'offline' && (
-        <div className="space-y-6">
+        <div className="space-y-6 fade-in-up">
           {!vipSummary.active ? (
             <div
               data-testid="library-offline-vip-lock"
@@ -547,7 +548,7 @@ export function LibraryView({
 
       {/* TAB 3: ACCOUNT PROFILE, AUTO-BACKUP & CROSS-DEVICE SYNC */}
       {activeTab === 'sync' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 fade-in-up">
           <div className="p-6 rounded-lg bg-[#13161F] border border-white/[0.08] space-y-5">
             <h2 className="font-display text-xl font-semibold text-[#F1ECE1]">
               Hồ sơ cá nhân &amp; Sao lưu tự động
@@ -707,14 +708,14 @@ export function LibraryView({
 
       {/* TAB 4: PUSH NOTIFICATIONS */}
       {activeTab === 'notifications' && (
-        <div className="p-6 rounded-lg bg-[#13161F] border border-white/[0.08] space-y-6">
+        <div className="p-6 rounded-lg bg-[#13161F] border border-white/[0.08] space-y-6 fade-in-up">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/[0.08]">
             <div>
               <h2 className="font-display text-xl font-semibold text-[#F1ECE1]">
                 Thông báo đẩy chương truyện mới
               </h2>
               <p className="text-xs text-[#9A9892] mt-1">
-                Nhận thông báo ngay khi Huyết Nguyệt Cố Đô đăng chương mới vào Thứ Tư và Chủ Nhật hàng tuần.
+                Nhận thông báo ngay khi {SITE_CONFIG.storyTitle} đăng chương mới ({SITE_CONFIG.updateSchedule}).
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
@@ -772,7 +773,7 @@ export function LibraryView({
 
       {/* TAB 5: VIP MEMBERSHIP */}
       {activeTab === 'vip' && (
-        <div className="space-y-6">
+        <div className="space-y-6 fade-in-up">
           {/* Current Account Tier & Expiry Card */}
           <div className="p-6 sm:p-8 rounded-xl bg-[#13161F] border border-[#C69B53]/40 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-white/[0.08]">
@@ -803,15 +804,19 @@ export function LibraryView({
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
-                {vipSummary.active && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenChapter('arc-2-chuong-3')}
-                    className="px-4 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs font-semibold whitespace-nowrap cursor-pointer"
-                  >
-                    Đọc Chương 3 (Arc 2)
-                  </button>
-                )}
+                {vipSummary.active && CHAPTERS.length > 0 && (() => {
+                  const vipShortcutChapter =
+                    CHAPTERS.find((c) => c.isVipEarlyAccess) || CHAPTERS[0];
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => onOpenChapter(vipShortcutChapter.id)}
+                      className="px-4 py-2.5 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] text-xs font-semibold whitespace-nowrap cursor-pointer"
+                    >
+                      Đọc Chương {vipShortcutChapter.number}
+                    </button>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={onOpenVipGuideModal}
@@ -869,7 +874,7 @@ export function LibraryView({
                           setVipCodeInput(e.target.value);
                           if (vipCodeError) setVipCodeError(null);
                         }}
-                        placeholder="Nhập mã kích hoạt VIP (vd: VIP30-HUYETNGUYET)"
+                        placeholder="Nhập mã kích hoạt VIP (vd: VIP30-DEMO)"
                         autoComplete="off"
                         className="w-full pl-9 pr-3.5 py-2.5 rounded-md bg-[#0B0D12] border border-white/[0.14] text-sm font-mono uppercase text-[#F1ECE1] placeholder:text-[#6E6D68] focus:outline-none focus:border-[#C69B53]"
                       />
@@ -896,9 +901,9 @@ export function LibraryView({
 
                   {!isSupabaseConfigured && (
                     <p className="text-[11px] text-[#8E8C86]">
-                      Mã thử nghiệm cục bộ: <span className="font-mono text-[#C9C5BC]">VIP30-HUYETNGUYET</span> (30 ngày),{' '}
-                      <span className="font-mono text-[#C9C5BC]">VIP90-THACHUYEN</span> (90 ngày),{' '}
-                      <span className="font-mono text-[#C9C5BC]">VIPFULL-MACLAM</span> (Vĩnh viễn).
+                      Mã thử nghiệm cục bộ: <span className="font-mono text-[#C9C5BC]">VIP30-DEMO</span> (30 ngày),{' '}
+                      <span className="font-mono text-[#C9C5BC]">VIP90-DEMO</span> (90 ngày),{' '}
+                      <span className="font-mono text-[#C9C5BC]">VIPFULL-DEMO</span> (Vĩnh viễn).
                     </p>
                   )}
                 </form>
@@ -909,7 +914,7 @@ export function LibraryView({
               <div className="space-y-1.5">
                 <h3 className="font-semibold text-[#F1ECE1]">Đọc trước 7 ngày</h3>
                 <p className="text-xs text-[#9A9892] leading-relaxed">
-                  Mở khóa sớm toàn bộ chương mới thuộc Arc 2 trước ngày tự động phát hành miễn phí.
+                  Mở khóa sớm toàn bộ chương mới dành cho Thành viên VIP trước ngày tự động phát hành miễn phí.
                 </p>
               </div>
               <div className="space-y-1.5">

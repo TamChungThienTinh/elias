@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import {MERCH_ITEMS} from '../data/merch';
+import {SITE_CONFIG} from '../data/siteConfig';
 import type {CartItem} from '../types';
 import {calculateCartTotals, formatVnd} from '../utils/readerLogic';
 import {SafeImage} from './SafeImage';
@@ -62,7 +63,7 @@ export function CartDrawer({
 
   const handleCopyOrderSummary = async () => {
     const lines = [
-      'Đơn đặt Merch — Huyết Nguyệt Cố Đô:',
+      `Đơn đặt Merch — ${SITE_CONFIG.siteName}:`,
       ...detailedItems.map(
         ({product, quantity}) =>
           `- ${product.name} × ${quantity} (${formatVnd(product.priceVnd * quantity)})`
@@ -144,6 +145,8 @@ export function CartDrawer({
                     <SafeImage
                       src={product.image}
                       alt={product.name}
+                      placeholderText="Chỗ đặt ảnh sản phẩm Merch (tỷ lệ 4:3)"
+                      compact
                       className="w-full h-full object-cover"
                     />
                   </div>

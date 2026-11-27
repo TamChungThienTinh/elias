@@ -139,7 +139,7 @@ export function AuthModal({
           id="auth-modal-title"
           className="font-display text-2xl font-semibold text-[#F5F1E8] mt-1"
         >
-          {mode === 'login' ? 'Đăng nhập Huyết Nguyệt' : 'Tạo tài khoản mới'}
+          {mode === 'login' ? 'Đăng nhập tài khoản' : 'Tạo tài khoản mới'}
         </h2>
         <p className="text-xs text-[#9A9892] mt-1.5 leading-relaxed">
           {reasonMessage ||
@@ -224,7 +224,7 @@ export function AuthModal({
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Ví dụ: Minh Quân"
+                  placeholder="Ví dụ: Độc giả mới"
                   autoComplete="name"
                   className="w-full pl-9 pr-3.5 py-2.5 rounded-md bg-[#0B0D12] border border-white/[0.12] text-sm text-[#F1ECE1] placeholder:text-[#6E6D68] focus:outline-none focus:border-[#C69B53]"
                 />

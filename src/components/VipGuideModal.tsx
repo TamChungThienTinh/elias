@@ -10,6 +10,7 @@ import {
   Send,
   X,
 } from 'lucide-react';
+import {SITE_CONFIG} from '../data/siteConfig';
 import type {AuthUser} from '../types';
 import {
   buildVietQrUrl,
@@ -17,28 +18,8 @@ import {
   formatVnd,
 } from '../utils/readerLogic';
 
-/**
- * ============================================================================
- * CẤU HÌNH TÀI KHOẢN NGÂN HÀNG VIETQR & LIÊN HỆ TÁC GIẢ
- * (Tác giả chỉ cần thay các giá trị bên dưới bằng thông tin thật của mình)
- * ============================================================================
- */
-const VIETQR_BANK_CONFIG = {
-  // [MA_NGAN_HANG]: ví dụ 'MB', 'VCB', 'TCB', 'ACB', 'BIDV', 'TPB', 'VPB'
-  bankCode: 'MB',
-  bankDisplayName: 'MB Bank (Ngân hàng Quân Đội)',
-  // [SO_TAI_KHOAN]: số tài khoản nhận chuyển khoản
-  accountNumber: '0123456789',
-  // [TEN_CHU_TK_KHONG_DAU]: tên chủ tài khoản viết hoa không dấu
-  accountName: 'NGUYEN MAC LAM',
-};
-
-const AUTHOR_CONTACT_LINKS = {
-  // [LINK_FB]: đường dẫn Facebook / Messenger nhận biên lai
-  facebookUrl: 'https://m.me/huyetnguyetcodo',
-  // [LINK_ZALO_HOAC_DISCORD]: đường dẫn Zalo hoặc Discord của tác giả
-  zaloOrDiscordUrl: 'https://zalo.me/0123456789',
-};
+const VIETQR_BANK_CONFIG = SITE_CONFIG.vietQrBank;
+const AUTHOR_CONTACT_LINKS = SITE_CONFIG.authorContacts;
 
 export interface VipPackageOption {
   id: string;

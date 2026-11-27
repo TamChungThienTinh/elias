@@ -92,7 +92,9 @@ export interface MerchItem {
   category: MerchCategory;
   categoryLabel: string;
   priceVnd: number;
+  priceDisplay?: string;
   status: MerchStatus;
+  stockStatusLabel?: string;
   featured?: boolean;
   image: string;
   dimensions: string;
