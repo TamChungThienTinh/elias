@@ -89,11 +89,11 @@ export interface SiteConfig {
 
 export const SITE_CONFIG: SiteConfig = {
   // 1. THÔNG TIN CƠ BẢN CỦA TRANG WEB & TÁC PHẨM
-  siteName: '[Tên web / Thương hiệu]',
+  siteName: 'Huyết Án Đa Diện',
   storyTitle: '[Tên tác phẩm của bạn]',
   subtitle: '[Tên bộ / Dòng phụ đề]',
   authorName: '[Tên tác giả]',
-  genres: ['Thể loại 1', 'Thể loại 2', 'Thể loại 3'],
+  genres: ['Linh Dị', '16+'],
   status: 'Đang ra chương mới',
   updateSchedule: '[Lịch ra chương, ví dụ: Thứ Tư & Chủ Nhật]',
   coverImage: '',

@@ -53,6 +53,10 @@
   font-family: var(--font-sans);
 }
 
+.font-nav-fantasy {
+  font-family: 'Cormorant Garamond', var(--font-serif-book), Georgia, serif;
+}
+
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }

@@ -117,7 +117,7 @@ export function Header({
                   handleNav(item.route);
                 }}
                 aria-current={active ? 'page' : undefined}
-                className={`relative py-1 whitespace-nowrap shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C69B53] rounded-sm ${
+                className={`font-nav-fantasy text-[17px] leading-none font-semibold tracking-[0.03em] relative py-1 whitespace-nowrap shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C69B53] rounded-sm ${
                   active
                     ? 'text-[#F1ECE1]'
                     : 'text-[#9A9892] hover:text-[#E6E3DC]'

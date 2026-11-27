@@ -172,7 +172,7 @@ const SAMPLE_SERIES_FIXTURE: RecommendedStory[] = [
 ];
 
 test('SITE_CONFIG provides clean template defaults with 1 arc, 1 chapter, 3 merch slots, and empty placeholder images', () => {
-  assert.equal(SITE_CONFIG.siteName, '[Tên web / Thương hiệu]');
+  assert.equal(SITE_CONFIG.siteName, 'Huyết Án Đa Diện');
   assert.equal(SITE_CONFIG.storyTitle, '[Tên tác phẩm của bạn]');
   assert.equal(SITE_CONFIG.coverImage, '');
   assert.equal(SITE_CONFIG.arcs.length, 1);

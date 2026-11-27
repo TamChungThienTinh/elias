@@ -21,10 +21,13 @@ import {
   Minimize2,
   Minus,
   Moon,
+  Pause,
+  Play,
   Plus,
   QrCode,
   ScrollText,
   Sun,
+  X,
 } from 'lucide-react';
 import {ARCS, CHAPTERS} from '../data/chapters';
 import {isSupabaseConfigured} from '../lib/supabase';
@@ -267,10 +270,74 @@ export function ReaderView({
   const [commentAuthor, setCommentAuthor] = useState(defaultAuthorName);
   const [commentText, setCommentText] = useState('');
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [autoScrollPanelOpen, setAutoScrollPanelOpen] = useState(false);
+  const [autoScrollActive, setAutoScrollActive] = useState(false);
+  const [autoScrollSpeed, setAutoScrollSpeed] = useState(3);
   const restoredChapterRef = useRef<string | null>(null);
   const proseSectionRef = useRef<HTMLDivElement | null>(null);
   const paywallCardRef = useRef<HTMLDivElement | null>(null);
   const vipCodeInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setAutoScrollActive(false);
+  }, [chapter.id]);
+
+  useEffect(() => {
+    if (settings.readingMode !== 'scroll' && autoScrollActive) {
+      setAutoScrollActive(false);
+    }
+  }, [settings.readingMode, autoScrollActive]);
+
+  // Vòng lặp cuộn tự động mượt mà bằng requestAnimationFrame + tích lũy pixel lẻ
+  useEffect(() => {
+    if (!autoScrollActive || settings.readingMode !== 'scroll') return;
+
+    const pxPerSecond = 18 + (autoScrollSpeed - 1) * 14;
+    let rafId = 0;
+    let lastTimestamp: number | null = null;
+    let carryPx = 0;
+
+    const tick = (timestamp: number) => {
+      if (lastTimestamp !== null) {
+        const dtSeconds = Math.min((timestamp - lastTimestamp) / 1000, 0.1);
+        carryPx += pxPerSecond * dtSeconds;
+        const wholePx = Math.floor(carryPx);
+        if (wholePx >= 1) {
+          carryPx -= wholePx;
+          const maxScrollY = Math.max(
+            0,
+            document.documentElement.scrollHeight - window.innerHeight
+          );
+          const nextY = Math.min(maxScrollY, window.scrollY + wholePx);
+          window.scrollTo({top: nextY, behavior: 'instant'});
+
+          if (nextY >= maxScrollY - 1) {
+            setAutoScrollActive(false);
+            return;
+          }
+        }
+      }
+      lastTimestamp = timestamp;
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [autoScrollActive, autoScrollSpeed, settings.readingMode]);
+
+  const handleToggleAutoScroll = () => {
+    if (autoScrollActive) {
+      setAutoScrollActive(false);
+      return;
+    }
+    if (settings.readingMode !== 'scroll') {
+      onUpdateSettings({readingMode: 'scroll'});
+    }
+    setAutoScrollPanelOpen(true);
+    setAutoScrollActive(true);
+  };
 
   useEffect(() => {
     setCommentAuthor(defaultAuthorName);
@@ -745,6 +812,29 @@ export function ReaderView({
 
             <button
               type="button"
+              data-testid="reader-autoscroll-toggle"
+              onClick={handleToggleAutoScroll}
+              aria-pressed={autoScrollActive}
+              aria-label={autoScrollActive ? 'Tạm dừng đọc tự động' : 'Đọc tự động'}
+              title="Tự động cuộn trang nhẹ nhàng khi đọc"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                autoScrollActive
+                  ? 'border-[#C69B53] bg-[#C69B53] text-[#0B0D12] font-semibold'
+                  : `border-[#C69B53]/45 hover:border-[#C69B53] ${palette.buttonIdle}`
+              }`}
+            >
+              {autoScrollActive ? (
+                <Pause className="w-3.5 h-3.5" aria-hidden="true" />
+              ) : (
+                <Play className="w-3.5 h-3.5 text-[#C69B53]" aria-hidden="true" />
+              )}
+              <span className="hidden sm:inline">
+                {autoScrollActive ? 'Đang cuộn' : 'Đọc tự động'}
+              </span>
+            </button>
+
+            <button
+              type="button"
               data-testid="reader-focus-mode-toggle"
               onClick={onToggleFocusMode}
               aria-pressed={isFocusMode}
@@ -758,6 +848,75 @@ export function ReaderView({
           </div>
         </div>
       </div>
+      )}
+
+      {/* Bảng điều khiển nổi cho Đọc tự động (Auto-scroll) kèm thanh trượt tốc độ */}
+      {autoScrollPanelOpen && (
+        <div
+          data-testid="reader-autoscroll-panel"
+          role="region"
+          aria-label="Điều khiển đọc tự động"
+          className={`fixed bottom-6 left-4 sm:left-6 z-40 flex items-center gap-3 px-3.5 py-2.5 rounded-lg border border-[#C69B53]/50 ${palette.toolbarBg} backdrop-blur-md shadow-[0_10px_28px_rgba(0,0,0,0.55)] transition-opacity duration-200 ${
+            isFocusMode ? 'opacity-80 hover:opacity-100' : 'opacity-100'
+          }`}
+        >
+          <button
+            type="button"
+            data-testid="reader-autoscroll-play-pause"
+            onClick={handleToggleAutoScroll}
+            aria-label={autoScrollActive ? 'Tạm dừng cuộn tự động' : 'Tiếp tục cuộn tự động'}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-[#C69B53] hover:bg-[#D8AE68] text-[#0B0D12] transition-colors shrink-0 cursor-pointer"
+          >
+            {autoScrollActive ? (
+              <Pause className="w-4 h-4" aria-hidden="true" />
+            ) : (
+              <Play className="w-4 h-4" aria-hidden="true" />
+            )}
+          </button>
+
+          <div className="flex flex-col gap-1 min-w-[140px] sm:min-w-[168px]">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <label
+                htmlFor="reader-autoscroll-speed"
+                className={`font-medium ${palette.textMuted}`}
+              >
+                Tốc độ cuộn
+              </label>
+              <span
+                data-testid="reader-autoscroll-speed-value"
+                className={`font-semibold tabular-nums ${palette.accentText}`}
+              >
+                Mức {autoScrollSpeed}/10
+              </span>
+            </div>
+            <input
+              id="reader-autoscroll-speed"
+              data-testid="reader-autoscroll-slider"
+              type="range"
+              min={1}
+              max={10}
+              step={1}
+              value={autoScrollSpeed}
+              onChange={(e) => setAutoScrollSpeed(Number(e.target.value))}
+              aria-label="Điều chỉnh tốc độ đọc tự động"
+              className="w-full h-1.5 rounded-lg appearance-none bg-[#C69B53]/25 accent-[#C69B53] cursor-pointer"
+            />
+          </div>
+
+          <button
+            type="button"
+            data-testid="reader-autoscroll-close"
+            onClick={() => {
+              setAutoScrollActive(false);
+              setAutoScrollPanelOpen(false);
+            }}
+            aria-label="Đóng thanh đọc tự động"
+            title="Tắt đọc tự động"
+            className={`inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors shrink-0 cursor-pointer ${palette.buttonIdle}`}
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
+          </button>
+        </div>
       )}
 
       {/* Main Reading Column */}
