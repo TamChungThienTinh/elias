@@ -1,0 +1,6 @@
+{
+  "name": "Huyết Nguyệt Cố Đô",
+  "description": "Trang đọc tiểu thuyết Dark Fantasy và trưng bày merch chính hãng bằng tiếng Việt.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
